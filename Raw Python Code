@@ -31,7 +31,7 @@ def _load_custom_fonts():
     """Load bundled fonts so tkinter can use them."""
     try:
         base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-        for font_file in ('Chopsic.otf', 'ThisAppeal-FreeDemo.ttf', 'Evogria.otf', 'Exo2-Regular.otf'):
+        for font_file in ('Chopsic.otf', 'ThisAppeal-FreeDemo.ttf', 'Evogria.otf', 'Exo2-Regular.otf', 'Codec-Cold-Bold-trial.ttf', 'Microsport Bold.ttf', 'TT Lakes Neue Trial Regular.ttf', 'NIKEA.otf'):
             font_path = os.path.join(base, font_file)
             if os.path.exists(font_path):
                 ctypes.windll.gdi32.AddFontResourceExW(font_path, 0x10, 0)
@@ -40,6 +40,15 @@ def _load_custom_fonts():
 
 
 _load_custom_fonts()
+
+
+def _get_pref_path(filename):
+    """Return path to a preference file stored in %APPDATA%\\WindowsSystemCleaner."""
+    appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+    pref_dir = os.path.join(appdata, 'WindowsSystemCleaner')
+    os.makedirs(pref_dir, exist_ok=True)
+    return os.path.join(pref_dir, filename)
+
 
 # ==================== INSTALLABLE APPS DATABASE ====================
 INSTALLABLE_APPS = {
@@ -4751,8 +4760,9 @@ class SystemCleanerGUI:
 
             # Load font size preference if it exists
             try:
-                if os.path.exists("font_size_pref.json"):
-                    with open("font_size_pref.json", "r") as f:
+                _fp = _get_pref_path("font_size_pref.json")
+                if os.path.exists(_fp):
+                    with open(_fp, "r") as f:
                         pref = json.load(f)
                         self.font_size_factor = pref.get("font_size_factor", 1.0)
             except (json.JSONDecodeError, OSError, KeyError):
@@ -4765,28 +4775,10 @@ class SystemCleanerGUI:
 
             # Set window icon
             try:
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                ico_path = os.path.join(current_dir, "icon.ico")
-                
+                base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+                ico_path = os.path.join(base, "icon.ico")
                 if os.path.exists(ico_path):
-                    self.root.iconbitmap(ico_path)
-                else:
-                    potential_icons = [
-                        os.path.join(current_dir, "app_icon.png"),
-                        os.path.join(current_dir, "dist", "app_icon.png"),  # Check dist folder
-                        os.path.join(current_dir, "..", "app_icon.png"),
-                        "app_icon.png"
-                    ]
-    
-                    icon_path = None
-                    for path in potential_icons:
-                        if os.path.exists(path):
-                            icon_path = path
-                            break
-    
-                    if icon_path:
-                        icon_image = tk.PhotoImage(file=icon_path)
-                        self.root.iconphoto(True, icon_image)
+                    self.root.iconbitmap(default=ico_path)
             except Exception as e:
                 print(f"Failed to load icon: {e}")
 
@@ -4928,7 +4920,7 @@ class SystemCleanerGUI:
 
         # Save the preference
         try:
-            with open("font_size_pref.json", "w") as f:
+            with open(_get_pref_path("font_size_pref.json"), "w") as f:
                 json.dump({"font_size_factor": self.font_size_factor}, f)
         except:
             pass
@@ -4995,7 +4987,7 @@ class SystemCleanerGUI:
 
         # Save theme preference
         try:
-            with open("theme_pref.json", "w") as f:
+            with open(_get_pref_path("theme_pref.json"), "w") as f:
                 json.dump({"theme": theme_name}, f)
         except:
             pass
@@ -5178,7 +5170,7 @@ class SystemCleanerGUI:
             self.widgets.append(('frame', self.header_separator))
 
             # Title row
-            title_font = ('Chopsic', 34)
+            title_font = ('Microsport Bold', 34)
             self.title_label = tk.Label(
                 self.header_frame,
                 text="WSC",
@@ -5300,7 +5292,7 @@ class SystemCleanerGUI:
             self.smart_search_frame.pack(fill=tk.X, pady=(0, 12))
             self.widgets.append(('frame', self.smart_search_frame))
 
-            smart_title_font = ('Chopsic', 11)
+            smart_title_font = ('Codec Cold Trial Bold', 11)
             self.smart_search_title = tk.Label(
                 self.smart_search_frame,
                 text="SMART FIX SEARCH",
@@ -5332,7 +5324,7 @@ class SystemCleanerGUI:
             self.smart_recommendation_label = tk.Label(
                 self.smart_search_frame,
                 text="Type symptoms like: network not working, BSOD, update errors, PC slow.",
-                font=('Chopsic', 9),
+                font=('TT Lakes Neue Trial', 10),
                 bg=self.theme['surface'],
                 fg=self.theme['label_fg_dim'],
                 justify=tk.LEFT,
@@ -5345,7 +5337,7 @@ class SystemCleanerGUI:
             self.smart_apply_button = tk.Button(
                 self.smart_search_frame,
                 text="  APPLY RECOMMENDED TASKS  ",
-                font=('Chopsic', 10),
+                font=('TT Lakes Neue Trial', 10),
                 command=self._apply_smart_recommendations,
                 bg=self.theme['button_bg'],
                 fg=self.theme['button_fg'],
@@ -5394,7 +5386,7 @@ class SystemCleanerGUI:
             self.widgets.append(('frame', self.left_frame))
 
             # Premium card-style Labelframes
-            task_frame_font = ('Chopsic', 14)
+            task_frame_font = ('NIKEA', 14)
             self.task_frame = tk.LabelFrame(
                 self.left_frame,
                 text="  CORE SYSTEM TASKS  ",
@@ -5412,7 +5404,7 @@ class SystemCleanerGUI:
             self.widgets.append(('labelframe', self.task_frame))
             self.widget_fonts[self.task_frame] = task_frame_font
 
-            app_frame_font = ('Chopsic', 14)
+            app_frame_font = ('NIKEA', 14)
             self.app_frame = tk.LabelFrame(
                 self.left_frame,
                 text="  APP SETTINGS  ",
@@ -5435,7 +5427,7 @@ class SystemCleanerGUI:
             self.right_frame.grid(row=0, column=1, sticky="nsew", padx=(22, 0))
             self.widgets.append(('frame', self.right_frame))
 
-            additional_task_frame_font = ('Chopsic', 14)
+            additional_task_frame_font = ('NIKEA', 14)
             self.additional_task_frame = tk.LabelFrame(
                 self.right_frame,
                 text="  ADDITIONAL TASKS  ",
@@ -5525,8 +5517,8 @@ class SystemCleanerGUI:
             self.widgets.append(('frame', self.additional_checkbox_frame))
 
             # Create core system tasks checkboxes
-            task_font = ('Evogria', 10)
-            section_font = ('Chopsic', 10)
+            task_font = ('TT Lakes Neue Trial', 10)
+            section_font = ('Codec Cold Trial Bold', 10)
 
             # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             # LEFT COLUMN -- CORE SYSTEM TASKS (self.checkbox_frame)
@@ -6679,7 +6671,7 @@ class SystemCleanerGUI:
             storage_sence_frame.pack(fill=tk.X, pady=3)
             self.storage_sence_checkbox = tk.Checkbutton(
                 storage_sence_frame,
-                text="Storage Analyzer (Drive Scanner)",
+                text="WSC-Storage Analyzer",
                 variable=self.storage_sence,
                 font=task_font,
                 anchor=tk.W,
@@ -6694,7 +6686,7 @@ class SystemCleanerGUI:
             storage_sence_indicator = tk.Label(storage_sence_frame, text="●", font=('Segoe UI', 10),
                                                bg=self.theme['surface'], fg=self.theme['admin_indicator'])
             storage_sence_indicator.pack(side=tk.RIGHT, padx=5)
-            Tooltip(self.storage_sence_checkbox, "Launches advanced drive health and space scanner", self.theme)
+            Tooltip(self.storage_sence_checkbox, "Custom Storage Analyzer Created By CyberBigfoot", self.theme)
 
             # AutoPilot CSV
             autopilot_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
@@ -6848,7 +6840,7 @@ class SystemCleanerGUI:
             self.button_frame.pack(fill=tk.X, pady=(8, 24))
             self.widgets.append(('frame', self.button_frame))
 
-            run_button_font = ('Chopsic', 12)
+            run_button_font = ('TT Lakes Neue Trial', 12)
             self.run_button = tk.Button(
                 self.button_frame,
                 text="  RUN SELECTED TASKS  ",
@@ -6870,7 +6862,7 @@ class SystemCleanerGUI:
             self.widgets.append(('button', self.run_button))
             self.widget_fonts[self.run_button] = run_button_font
 
-            exit_button_font = ('Chopsic', 12)
+            exit_button_font = ('TT Lakes Neue Trial', 12)
             self.exit_button = tk.Button(
                 self.button_frame,
                 text="  EXIT  ",
@@ -6892,7 +6884,7 @@ class SystemCleanerGUI:
             self.widget_fonts[self.exit_button] = exit_button_font
 
             # Install Needed Apps Button
-            install_apps_button_font = ('Chopsic', 12)
+            install_apps_button_font = ('TT Lakes Neue Trial', 12)
             self.install_apps_button = tk.Button(
                 self.button_frame,
                 text="  INSTALL APPS  ",
@@ -6956,7 +6948,7 @@ class SystemCleanerGUI:
             self.log_container.pack(fill=tk.BOTH, expand=True)
             self.widgets.append(('frame', self.log_container))
 
-            log_label_font = ('Chopsic', 11)
+            log_label_font = ('NIKEA', 11)
             self.log_label = tk.Label(
                 self.log_container,
                 text="ACTIVITY LOG",
@@ -8818,6 +8810,14 @@ class SystemCleanerGUI:
                         if progress_match:
                             progress = progress_match.group(1)
                             self.update_progress_info(display_name, f"{progress}%")
+                        else:
+                            fraction_match = re.search(r'(\d+)/(\d+)', progress_info)
+                            if fraction_match:
+                                current = int(fraction_match.group(1))
+                                total = int(fraction_match.group(2))
+                                if total > 0:
+                                    progress = int((current / total) * 100)
+                                    self.update_progress_info(display_name, f"{progress}%")
 
                         self.log_message(progress_info, display_name)
 
@@ -9894,28 +9894,57 @@ class SystemCleanerGUI:
                     self.queue.put("PROGRESS:Disk Cleanup:Executing: cleanmgr /sagerun:1")
                     self.queue.put("PROGRESS:Disk Cleanup:Starting disk cleanup process...")
 
-                    result = subprocess.run(
+                    process = subprocess.Popen(
                         ['cleanmgr', '/sagerun:1'],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                        timeout=1800,  # 30 minute timeout
-                        creationflags=CREATE_NO_WINDOW  # Hide console window
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=CREATE_NO_WINDOW
                     )
 
-                    if result.returncode == 0:
-                        self.queue.put("PROGRESS:Disk Cleanup:Disk cleanup completed successfully")
-                    else:
-                        self.queue.put(
-                            f"PROGRESS:Disk Cleanup:Disk cleanup completed with return code: {result.returncode}")
+                    timeout_seconds = 300  # 5 minutes
+                    start_time = time.time()
 
-                    if result.stdout.strip():
-                        self.queue.put(f"PROGRESS:Disk Cleanup:Output: {result.stdout.strip()}")
-                    if result.stderr.strip():
-                        self.queue.put(f"PROGRESS:Disk Cleanup:Errors: {result.stderr.strip()}")
+                    while True:
+                        retcode = process.poll()
+                        if retcode is not None:
+                            if retcode == 0:
+                                self.queue.put("PROGRESS:Disk Cleanup:Disk cleanup completed successfully 100%")
+                            else:
+                                self.queue.put(f"PROGRESS:Disk Cleanup:Disk cleanup completed (code: {retcode}) 100%")
+                            break
 
-                except subprocess.TimeoutExpired:
-                    self.queue.put("PROGRESS:Disk Cleanup:Disk cleanup timed out after 30 minutes")
+                        elapsed = time.time() - start_time
+                        if elapsed > timeout_seconds:
+                            process.kill()
+                            process.wait()
+                            self.queue.put("PROGRESS:Disk Cleanup:Disk cleanup timed out after 5 minutes, process terminated")
+                            break
+
+                        pct = min(int((elapsed / timeout_seconds) * 90) + 5, 95)
+                        self.queue.put(f"PROGRESS:Disk Cleanup:Disk cleanup running... {pct}%")
+                        time.sleep(3)
+
+                    # Wait for any lingering cleanmgr child processes before proceeding
+                    self.queue.put("PROGRESS:Disk Cleanup:Waiting for cleanup processes to settle...")
+                    settle_start = time.time()
+                    while time.time() - settle_start < 60:
+                        check = subprocess.run(
+                            ['tasklist', '/fi', 'IMAGENAME eq cleanmgr.exe', '/fo', 'csv', '/nh'],
+                            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW, timeout=10
+                        )
+                        if 'cleanmgr.exe' not in check.stdout.lower():
+                            break
+                        time.sleep(3)
+
+                    # Explicitly empty Recycle Bin on all drives (including G:) synchronously
+                    self.queue.put("PROGRESS:Disk Cleanup:Emptying Recycle Bin on all drives... 97%")
+                    subprocess.run(
+                        ['powershell', '-NonInteractive', '-Command',
+                         'Clear-RecycleBin -Force -ErrorAction SilentlyContinue'],
+                        capture_output=True, timeout=120, creationflags=CREATE_NO_WINDOW
+                    )
+                    self.queue.put("PROGRESS:Disk Cleanup:All cleanup completed 100%")
+
                 except Exception as e:
                     self.queue.put(f"PROGRESS:Disk Cleanup:Error running disk cleanup: {str(e)}")
 
@@ -12303,9 +12332,34 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
         self.queue.put(f"PROGRESS:Guardrail:Creating restore point before: {safe_reason}")
         ps_script = f'''
         try {{
-            Checkpoint-Computer -Description "EAWTECH Guardrail - {safe_reason}" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
-            Write-Host "Restore point created successfully."
+            $ErrorActionPreference = "Stop"
+            
+            # Ensure System Restore is enabled on C:
+            Enable-ComputerRestore -Drive "C:\\" -ErrorAction SilentlyContinue
+            
+            # Bypass 24-hour frequency limit in Windows 10/11
+            $regKey = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore"
+            New-ItemProperty -Path $regKey -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+            
+            # Use WMI for lightning fast creation
+            $desc = "EAWTECH Guardrail - {safe_reason}"
+            $wmiClass = Get-WmiObject -List -Namespace "root\\default" | Where-Object {{ $_.Name -eq "SystemRestore" }}
+            
+            if ($wmiClass) {{
+                $result = $wmiClass.CreateRestorePoint($desc, 7, 100)
+                if ($result.ReturnValue -in 0, 4096) {{
+                    Write-Host "Restore point created successfully via WMI."
+                    exit 0
+                }} else {{
+                    Write-Host "WMI returned $($result.ReturnValue), attempting fallback."
+                }}
+            }}
+            
+            # Fallback
+            Checkpoint-Computer -Description $desc -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+            Write-Host "Restore point created successfully (fallback)."
             exit 0
+            
         }} catch {{
             Write-Host "Restore point creation skipped/failed: $($_.Exception.Message)"
             exit 1
@@ -12781,8 +12835,9 @@ def main():
         theme_name = 'holographic'
         dark_mode = True
         try:
-            if os.path.exists("theme_pref.json"):
-                with open("theme_pref.json", "r") as f:
+            _tp = _get_pref_path("theme_pref.json")
+            if os.path.exists(_tp):
+                with open(_tp, "r") as f:
                     pref = json.load(f)
                     saved_name = pref.get("theme", "holographic")
                     _theme_map = {
@@ -12804,8 +12859,9 @@ def main():
         # Load font size preference
         font_size_factor = 1.0
         try:
-            if os.path.exists("font_size_pref.json"):
-                with open("font_size_pref.json", "r") as f:
+            _fp2 = _get_pref_path("font_size_pref.json")
+            if os.path.exists(_fp2):
+                with open(_fp2, "r") as f:
                     pref = json.load(f)
                     font_size_factor = pref.get("font_size_factor", 1.0)
         except (json.JSONDecodeError, OSError, KeyError):
