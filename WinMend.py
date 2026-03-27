@@ -31,7 +31,7 @@ def _load_custom_fonts():
     """Load bundled fonts so tkinter can use them."""
     try:
         base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-        for font_file in ('Chopsic.otf', 'ThisAppeal-FreeDemo.ttf', 'Evogria.otf', 'Exo2-Regular.otf', 'Codec-Cold-Bold-trial.ttf', 'Microsport Bold.ttf', 'TT Lakes Neue Trial Regular.ttf', 'NIKEA.otf'):
+        for font_file in ('Chopsic.otf', 'Exo2-Regular.otf', 'Codec-Cold-Bold-trial.ttf', 'Microsport Bold.ttf', 'TT Lakes Neue Trial Regular.ttf', 'NIKEA.otf'):
             font_path = os.path.join(base, font_file)
             if os.path.exists(font_path):
                 ctypes.windll.gdi32.AddFontResourceExW(font_path, 0x10, 0)
