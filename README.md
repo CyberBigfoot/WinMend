@@ -1,10 +1,10 @@
 <div align="center">
 
-# Windows System Cleaner
+# WinMend
 
 ### A professional all-in-one Windows maintenance, repair, and diagnostic toolkit
 
-[![Version](https://img.shields.io/badge/Version-1.4-0078D4?style=for-the-badge)](https://github.com/GrantEawood/Windows-System-Cleaner/releases)
+[![Version](https://img.shields.io/badge/Version-1.5-0078D4?style=for-the-badge)](https://github.com/GrantEawood/Windows-System-Cleaner/releases)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/GrantEawood/Windows-System-Cleaner)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
@@ -16,9 +16,9 @@
 
 ## Overview
 
-**Windows System Cleaner (WSC)** is a feature-rich desktop application built for IT professionals, power users, and everyday users who need a single, reliable tool to maintain, repair, and optimize their Windows machines.
+**WinMend** is a feature-rich desktop application built for IT professionals, power users, and everyday users who need a single, reliable tool to maintain, repair, and optimize their Windows machines.
 
-From one-click junk file removal to advanced BSOD analysis, network stack remediation, and a 350+ app installer — WSC brings everything under one polished, dark-themed dashboard without ever needing to open a command prompt.
+From one-click junk file removal to advanced BSOD analysis, network stack remediation, Windows activation, and a 350+ app installer — WinMend brings everything under one polished, holographic dark-themed dashboard without ever needing to open a command prompt.
 
 > **Requires Administrator privileges** for full functionality. The standalone `.exe` will automatically prompt for elevation via UAC.
 
@@ -26,18 +26,19 @@ From one-click junk file removal to advanced BSOD analysis, network stack remedi
 
 ## Screenshots
 
-<img width="1368" height="720" alt="Screenshot 2026-03-23 134144" src="https://github.com/user-attachments/assets/89f3e0d2-8f59-4afd-a3ad-774566d81183" />
+<img width="1189" height="1045" alt="First Screenshot" src="https://github.com/user-attachments/assets/0d6c4ec5-3026-4bdc-bd1f-690d2391072b" />
 
 <img width="1331" height="676" alt="Screenshot 2026-03-23 134236" src="https://github.com/user-attachments/assets/db48eff0-f472-49e8-a199-a70c13c3e730" />
 
-<img width="1169" height="548" alt="Screenshot 2026-03-23 134505" src="https://github.com/user-attachments/assets/16bc041c-bf4b-446c-8450-3d4df5a76ce6" />
+<img width="1179" height="942" alt="Last screenshot" src="https://github.com/user-attachments/assets/fa4e180b-64c6-4950-bf12-f518904cc47d" />
+
 
 
 ---
 
 ## Table of Contents
 
-- [What's New in v1.4](#whats-new-in-v14)
+- [What's New in v1.5](#whats-new-in-v15)
 - [Features](#features)
   - [Smart Fix Search](#smart-fix-search)
   - [Core System Tasks](#core-system-tasks)
@@ -45,7 +46,7 @@ From one-click junk file removal to advanced BSOD analysis, network stack remedi
   - [App Settings](#app-settings)
   - [Storage Analyzer](#storage-analyzer)
   - [App Installer](#app-installer)
-- [UI & Customization](#ui--customization)
+- [UI & Design](#ui--design)
 - [Installation](#installation)
 - [Building from Source](#building-from-source)
 - [Usage Guide](#usage-guide)
@@ -56,45 +57,41 @@ From one-click junk file removal to advanced BSOD analysis, network stack remedi
 
 ---
 
-## What's New in v1.4
+## What's New in v1.5
 
 <details>
-<summary><strong>Click to expand v1.4 changelog</strong></summary>
+<summary><strong>Click to expand v1.5 changelog</strong></summary>
 
 ### Rebranding
-- Main app header now displays the shorthand **WSC**
+- Application fully rebranded from **Windows System Cleaner** to **WinMend**
+- Executable, window title, and Storage Analyzer all updated to reflect the new name
 
-### Smart Search — Major Expansion
-Added 10 new diagnostic categories so users can describe any problem in plain language and receive instant, targeted tool recommendations:
+### New Task — Activate Windows / Change Product Key
+- Enter a product key via dialog and WinMend will run the full activation sequence automatically:
+  1. Install the product key (`slmgr /ipk`)
+  2. Activate against Microsoft's servers (`slmgr /ato`)
+  3. Verify activation status and expiry (`slmgr /xpr`)
 
-| New Category | Example Queries |
+### Holographic Theme
+- Replaced the previous multi-theme system with a single, refined **Holographic** theme:
+  - Deep cosmic navy (`#030611`) base
+  - Cyan (`#7FE4FF`) accent
+  - Emerald (`#19F1A2`) admin indicator
+  - Frosted glass panel aesthetic optimized for OLED and HDR displays
+
+### Expanded Font Library
+Four new fonts bundled alongside the existing set:
+
+| Font | Usage |
 |---|---|
-| Audio Repair | "no sound", "mic broken", "hdmi no audio" |
-| High CPU / RAM | "100% cpu", "memory leak", "task manager" |
-| Display & Graphics | "screen flickering", "black screen", "gpu issue" |
-| USB & Peripherals | "usb not recognized", "keyboard not working" |
-| Browser Performance | "chrome slow", "browser crashing" |
-| Overheating | "fan loud", "laptop hot", "thermal issue" |
-| Shell & Explorer | "taskbar frozen", "start menu broken" |
-| Disk Health | "100% disk", "bad sector", "ssd failing" |
-| App & Software Updates | "outdated apps", "winget" |
-| Safe Mode / BIOS | "boot to bios", "safe mode", "startup repair" |
-
-- 13 new single-word token entries for ultra-short searches
-- 4 missing display name entries added to the task map
-
-### Custom Typography
-| Area | Font |
-|---|---|
-| Title, section headers, buttons | Chopsic |
-| Task option labels | Evogria |
-| Activity log body text | Exo 2 |
-
-### UI Stability Fixes
-- **Right-column flash eliminated** — indicator dot font size was changing between states (10pt ↔ 11pt), causing row height changes that triggered a full scroll canvas repaint. Both states are now locked to 10pt
-- **Double-repaint eliminated** — click handler now writes to the LED cache immediately so the background refresh skips already-updated rows
-- **Reboot banner orange box fixed** — banner is now inside a fixed-height wrapper (`pack_propagate=False`) so the column layout never reflows when it appears or disappears
-- **Task highlight reset on completion** — all selected rows now correctly return to their unlit state after tasks finish running
+| Chopsic | Title, section headers, buttons |
+| Evogria | Task option labels |
+| Exo 2 | Activity log body text |
+| Codec Cold Bold | UI accents |
+| Microsport Bold | Numeric displays |
+| TT Lakes Neue | Secondary labels |
+| NIKEA | Decorative headings |
+| ThisAppeal | Supporting display text |
 
 </details>
 
@@ -108,7 +105,7 @@ The Smart Fix search bar lets you describe a Windows problem in plain English an
 
 **How it works:**
 1. Type your problem — e.g. `my pc is slow`, `no sound`, `blue screen`, `wifi not working`
-2. WSC scores and ranks every available tool against your query in real time
+2. WinMend scores and ranks every available tool against your query in real time
 3. Matching tools appear below the search bar with a reason for each recommendation
 4. Click **Apply Recommended Tasks** to pre-select them all, then **Run Selected Tasks** to execute
 
@@ -185,6 +182,11 @@ The Smart Fix search bar lets you describe a Windows problem in plain English an
 | Windows Update Forensic | Diagnoses stuck, broken, or looping Windows Update components |
 | Driver Rollback Center | Reverts recently installed drivers causing instability |
 
+#### Activation
+| Task | Description |
+|---|---|
+| Activate Windows / Change Product Key | Enter a product key to install, activate, and verify Windows licensing in one step |
+
 #### Utilities
 | Task | Description |
 |---|---|
@@ -236,7 +238,7 @@ A standalone professional disk analysis window accessible from the Utilities sec
 
 ### App Installer
 
-A high-performance application installer built directly into WSC.
+A high-performance application installer built directly into WinMend.
 
 - **350+ curated applications** across categories:
   - Browsers · Development Tools · Gaming · Multimedia · Communications · Document Software · Security · Utilities
@@ -247,20 +249,18 @@ A high-performance application installer built directly into WSC.
 
 ---
 
-## UI & Customization
+## UI & Design
 
-### Themes
+### Holographic Theme
 
-Switch instantly via **View > Theme**:
+WinMend uses a refined **Holographic** theme — a deep cosmic navy and cyan aesthetic optimized for OLED and HDR displays:
 
-| Theme | Description |
+| Element | Color |
 |---|---|
-| Dark | Default — deep navy and charcoal tones |
-| Light | Clean white and light grey |
-| Cyberpunk | Neon cyan and magenta on near-black |
-| Ocean | Blue and teal gradients |
-| Sunset | Orange and purple warm tones |
-| Forest | Muted greens on dark background |
+| Background | Deep cosmic navy `#030611` |
+| Accent | Cyan `#7FE4FF` |
+| Admin indicator | Emerald `#19F1A2` |
+| Panels | Frosted glass surfaces |
 
 ### Font Size
 
@@ -281,7 +281,7 @@ A persistent **Activity Log** runs at the bottom of the screen, logging every ac
 
 ### Option 1 — Standalone Executable (Recommended)
 
-Download the latest `Windows-System-Cleaner.exe` from the [Releases](https://github.com/GrantEawood/Windows-System-Cleaner/releases) page.
+Download the latest `WinMend.exe` from the [Releases](https://github.com/GrantEawood/Windows-System-Cleaner/releases) page.
 
 > Right-click → **Run as Administrator**, or the app will automatically request UAC elevation.
 
@@ -308,7 +308,7 @@ pip install wmi requests beautifulsoup4 psutil customtkinter
 
 **3. Run as Administrator**
 ```bash
-python "Windows System Cleaner.py"
+python WinMend.py
 ```
 
 ---
@@ -317,23 +317,23 @@ python "Windows System Cleaner.py"
 
 ### Basic build (single file)
 ```bash
-pyinstaller --onefile --noconsole --icon="icon.ico" "Windows System Cleaner.py"
+pyinstaller --onefile --noconsole --icon="icon.ico" WinMend.py
 ```
 
 ### Recommended build with UAC elevation
 
 **Step 1 — Generate the spec file**
 ```bash
-pyinstaller --onefile --noconsole --icon="icon.ico" "Windows System Cleaner.py"
+pyinstaller --onefile --noconsole --icon="icon.ico" WinMend.py
 ```
 
-**Step 2 — Edit `Windows System Cleaner.spec`**
+**Step 2 — Edit `WinMend.spec`**
 
 Find the `EXE(` block and add `uac_admin=True`:
 ```python
 exe = EXE(
     ...
-    name='Windows System Cleaner',
+    name='WinMend',
     uac_admin=True,       # Forces UAC elevation prompt on launch
     console=False,
 )
@@ -341,7 +341,7 @@ exe = EXE(
 
 **Step 3 — Build from the spec**
 ```bash
-pyinstaller "Windows System Cleaner.spec"
+pyinstaller WinMend.spec
 ```
 
 The final executable will be in the `dist/` folder.
@@ -354,7 +354,7 @@ The final executable will be in the `dist/` folder.
 
 ### Running your first scan
 
-1. Launch WSC as Administrator
+1. Launch WinMend as Administrator
 2. The dashboard will open with all tasks deselected
 3. Tick the tasks you want to run from either column, or use the **Smart Fix Search** to get automatic recommendations
 4. Click **Run Selected Tasks**
@@ -363,7 +363,7 @@ The final executable will be in the `dist/` folder.
 
 ### Smart Fix Search — Quick Start
 
-| You type | WSC recommends |
+| You type | WinMend recommends |
 |---|---|
 | `my pc is slow` | Clean Temp, Disk Cleanup, Virtual Memory, Startup Apps, Defrag |
 | `no sound` | Driver Install, Device Firmware, Service Repair, Event Log |
@@ -371,6 +371,7 @@ The final executable will be in the `dist/` folder.
 | `blue screen` | MiniDump Analyzer, BSOD Triage, Driver Rollback, Repair System |
 | `100% disk` | CHKDSK, Defrag & Optimize, Storage Sense, Disk Cleanup |
 | `virus` | Defender Scan, MSRT, Smart Malware Remediation, Autoruns |
+| `not activated` | Activate Windows / Change Product Key |
 
 ### Reboot-required tasks
 
@@ -385,7 +386,7 @@ The following tasks will display a **"A Reboot Will Be Required"** notice when s
 - **Input sanitization** — all commands are sanitized to prevent injection or path traversal attacks
 - **Confirmation prompts** — destructive or irreversible actions (disk repair, network reset, debloat) require explicit user confirmation before executing
 - **Restore Point Guardrail** — run the **Create Restore Point** task before any batch operation to create a recovery fallback
-- **No data collection** — WSC does not collect, transmit, or store any personal or system data
+- **No data collection** — WinMend does not collect, transmit, or store any personal or system data
 
 ---
 
@@ -419,7 +420,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Disclaimer
 
-Windows System Cleaner provides powerful, low-level access to Windows system components. While every effort has been made to ensure safe operation:
+WinMend provides powerful, low-level access to Windows system components. While every effort has been made to ensure safe operation:
 
 - Always **back up important data** before running disk repairs, system file operations, or large-scale deletions
 - Use the **Create Restore Point (Guardrail)** task before running batch operations
