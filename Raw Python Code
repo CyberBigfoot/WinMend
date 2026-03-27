@@ -972,7 +972,7 @@ class StorageSenseApp(ctk.CTkToplevel):
         self.ui_menu_bg = self.theme.get('menu_bg', '#101C33')
         self.ui_menu_fg = self.theme.get('menu_fg', '#E7F4FF')
 
-        self.title("Windows System Cleaner - Professional Disk Analyzer")
+        self.title("WinMend Storage Analyzer - Professional Disk Analyzer")
         self.geometry("1500x850")
         self.configure(fg_color=self.ui_bg)
         self.grid_columnconfigure(0, weight=1)
@@ -1918,248 +1918,6 @@ class StorageSenseApp(ctk.CTkToplevel):
 # and OLED-optimized dark surfaces.
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-# Platinum -- Inspired by macOS Sonoma / Apple HIG
-LIGHT_THEME = {
-    'bg': '#F5F5F7',            # Apple signature warm gray
-    'fg': '#1D1D1F',            # Apple near-black
-    'surface': '#FFFFFF',       # Pure white cards
-    'surface_alt': '#E8E8ED',   # Subtle elevated surface
-    'primary': '#0071E3',       # Apple blue
-    'select_bg': '#D1E5FA',     # Soft blue selection
-    'select_fg': '#1D1D1F',
-    'button_bg': '#0071E3',     # Apple blue
-    'button_fg': '#FFFFFF',
-    'button_secondary_bg': '#86868B',  # Apple secondary gray
-    'button_secondary_fg': '#FFFFFF',
-    'entry_bg': '#FFFFFF',
-    'entry_fg': '#1D1D1F',
-    'text_bg': '#FFFFFF',
-    'text_fg': '#1D1D1F',
-    'log_text_fg': '#1D1D1F',
-    'frame_bg': '#FFFFFF',
-    'label_bg': '#F5F5F7',
-    'label_fg': '#1D1D1F',
-    'header_bg': '#FFFFFF',
-    'header_fg': '#1D1D1F',
-    'progress_bg': '#0071E3',
-    'admin_fg': '#34C759',      # Apple system green
-    'admin_error_fg': '#FF3B30', # Apple system red
-    'menu_bg': '#FFFFFF',
-    'menu_fg': '#1D1D1F',
-    'task_bg': '#FFFFFF',
-    'task_fg': '#424245',       # Warm medium gray
-    'task_border': '#D2D2D7',   # Apple divider
-    'tooltip_bg': '#1D1D1F',
-    'tooltip_fg': '#F5F5F7',
-    'admin_indicator': '#34C759',
-    'user_indicator': '#FF9F0A', # Apple system orange
-    'card_bg': '#FFFFFF',
-    'card_border': '#D2D2D7',
-    'surface_alt': '#E8E8ED',
-    'label_fg_dim': '#86868B'   # Apple secondary text
-}
-
-# Obsidian -- True black OLED-optimized, inspired by Apple Dark Mode
-DARK_THEME = {
-    'bg': '#000000',            # True black (OLED)
-    'fg': '#F5F5F7',            # Apple light text
-    'surface': '#1C1C1E',       # iOS elevated surface
-    'surface_alt': '#2C2C2E',   # iOS secondary surface
-    'primary': '#0A84FF',       # Apple system blue (dark)
-    'select_bg': '#3A3A3C',     # Dark selection
-    'select_fg': '#F5F5F7',
-    'button_bg': '#0A84FF',     # System blue
-    'button_fg': '#FFFFFF',
-    'button_secondary_bg': '#48484A',  # Tertiary fill
-    'button_secondary_fg': '#F5F5F7',
-    'entry_bg': '#1C1C1E',
-    'entry_fg': '#F5F5F7',
-    'text_bg': '#1C1C1E',
-    'text_fg': '#F5F5F7',
-    'log_text_fg': '#30D158',   # Apple green (dark)
-    'frame_bg': '#1C1C1E',
-    'label_bg': '#000000',
-    'label_fg': '#F5F5F7',
-    'header_bg': '#1C1C1E',
-    'header_fg': '#F5F5F7',
-    'progress_bg': '#0A84FF',
-    'admin_fg': '#30D158',      # Apple green (dark)
-    'admin_error_fg': '#FF453A', # Apple red (dark)
-    'menu_bg': '#1C1C1E',
-    'menu_fg': '#F5F5F7',
-    'task_bg': '#2C2C2E',
-    'task_fg': '#AEAEB2',       # Apple secondary label
-    'task_border': '#38383A',   # Apple separator (dark)
-    'tooltip_bg': '#F5F5F7',
-    'tooltip_fg': '#1D1D1F',
-    'admin_indicator': '#30D158',
-    'user_indicator': '#FFD60A', # Apple yellow (dark)
-    'card_bg': '#1C1C1E',
-    'card_border': '#38383A',
-    'surface_alt': '#2C2C2E',
-    'label_fg_dim': '#8E8E93'   # Apple tertiary label
-}
-
-# Neon Noir -- Refined cyberpunk elegance
-CYBERPUNK_THEME = {
-    'bg': '#08080F',            # Void black
-    'fg': '#E8E8FF',            # Soft lavender white
-    'surface': '#101018',       # Deep surface
-    'surface_alt': '#1A1A28',   # Elevated dark
-    'primary': '#00D4FF',       # Electric cyan
-    'select_bg': '#1E2A38',
-    'select_fg': '#E8E8FF',
-    'button_bg': '#00D4FF',
-    'button_fg': '#08080F',
-    'button_secondary_bg': '#B026FF',  # Vivid violet
-    'button_secondary_fg': '#FFFFFF',
-    'entry_bg': '#101018',
-    'entry_fg': '#E8E8FF',
-    'text_bg': '#101018',
-    'text_fg': '#E8E8FF',
-    'log_text_fg': '#00FF88',   # Neon mint terminal
-    'frame_bg': '#101018',
-    'label_bg': '#08080F',
-    'label_fg': '#00D4FF',
-    'header_bg': '#101018',
-    'header_fg': '#E8E8FF',
-    'progress_bg': '#00D4FF',
-    'admin_fg': '#00FF88',
-    'admin_error_fg': '#FF3366',
-    'menu_bg': '#101018',
-    'menu_fg': '#E8E8FF',
-    'task_bg': '#1A1A28',
-    'task_fg': '#A0A0CC',
-    'task_border': '#252540',
-    'tooltip_bg': '#00D4FF',
-    'tooltip_fg': '#08080F',
-    'admin_indicator': '#00FF88',
-    'user_indicator': '#FFD700',
-    'card_bg': '#101018',
-    'card_border': '#1E1E30',
-    'label_fg_dim': '#6666AA'
-}
-
-# Abyss -- Deep ocean luxury
-OCEAN_THEME = {
-    'bg': '#0B1221',            # Midnight ocean
-    'fg': '#E4F0FB',            # Soft ice blue
-    'surface': '#0F1A2E',       # Deep navy surface
-    'surface_alt': '#162440',   # Elevated navy
-    'primary': '#38BDF8',       # Luminous sky blue
-    'select_bg': '#1E3A5F',
-    'select_fg': '#E4F0FB',
-    'button_bg': '#38BDF8',
-    'button_fg': '#0B1221',
-    'button_secondary_bg': '#2563EB',  # Royal blue
-    'button_secondary_fg': '#FFFFFF',
-    'entry_bg': '#0F1A2E',
-    'entry_fg': '#E4F0FB',
-    'text_bg': '#0F1A2E',
-    'text_fg': '#E4F0FB',
-    'log_text_fg': '#67E8F9',   # Cyan glow
-    'frame_bg': '#0F1A2E',
-    'label_bg': '#0B1221',
-    'label_fg': '#7DD3FC',
-    'header_bg': '#0F1A2E',
-    'header_fg': '#E4F0FB',
-    'progress_bg': '#38BDF8',
-    'admin_fg': '#4ADE80',
-    'admin_error_fg': '#FB7185',
-    'menu_bg': '#0F1A2E',
-    'menu_fg': '#E4F0FB',
-    'task_bg': '#162440',
-    'task_fg': '#94A3B8',
-    'task_border': '#1E3050',
-    'tooltip_bg': '#E4F0FB',
-    'tooltip_fg': '#0B1221',
-    'admin_indicator': '#4ADE80',
-    'user_indicator': '#FBBF24',
-    'card_bg': '#0F1A2E',
-    'card_border': '#1E3050',
-    'label_fg_dim': '#64748B'
-}
-
-# Solstice -- Warm amber luxury
-SUNSET_THEME = {
-    'bg': '#110D0A',            # Deep warm black
-    'fg': '#FFF4E8',            # Warm cream
-    'surface': '#1A1410',       # Dark leather
-    'surface_alt': '#261E16',   # Elevated warm
-    'primary': '#F59E0B',       # Rich amber
-    'select_bg': '#3D2E1A',
-    'select_fg': '#FFF4E8',
-    'button_bg': '#F59E0B',
-    'button_fg': '#110D0A',
-    'button_secondary_bg': '#D97706',  # Deep amber
-    'button_secondary_fg': '#FFFFFF',
-    'entry_bg': '#1A1410',
-    'entry_fg': '#FFF4E8',
-    'text_bg': '#1A1410',
-    'text_fg': '#FFF4E8',
-    'log_text_fg': '#FCD34D',   # Warm gold
-    'frame_bg': '#1A1410',
-    'label_bg': '#110D0A',
-    'label_fg': '#FBD38D',
-    'header_bg': '#1A1410',
-    'header_fg': '#FFF4E8',
-    'progress_bg': '#F59E0B',
-    'admin_fg': '#A3E635',
-    'admin_error_fg': '#EF4444',
-    'menu_bg': '#1A1410',
-    'menu_fg': '#FFF4E8',
-    'task_bg': '#261E16',
-    'task_fg': '#C8A882',
-    'task_border': '#332818',
-    'tooltip_bg': '#FFF4E8',
-    'tooltip_fg': '#110D0A',
-    'admin_indicator': '#A3E635',
-    'user_indicator': '#FFD700',
-    'card_bg': '#1A1410',
-    'card_border': '#2E2218',
-    'label_fg_dim': '#8B7355'
-}
-
-# Verdant -- Rich emerald forest
-FOREST_THEME = {
-    'bg': '#0A120A',            # Deep forest black
-    'fg': '#E8F5E9',            # Soft mint
-    'surface': '#111E11',       # Forest floor
-    'surface_alt': '#1A2E1A',   # Fern shadow
-    'primary': '#22C55E',       # Vivid emerald
-    'select_bg': '#1E3D1E',
-    'select_fg': '#E8F5E9',
-    'button_bg': '#22C55E',
-    'button_fg': '#0A120A',
-    'button_secondary_bg': '#16A34A',  # Deep green
-    'button_secondary_fg': '#FFFFFF',
-    'entry_bg': '#111E11',
-    'entry_fg': '#E8F5E9',
-    'text_bg': '#111E11',
-    'text_fg': '#E8F5E9',
-    'log_text_fg': '#86EFAC',   # Soft mint glow
-    'frame_bg': '#111E11',
-    'label_bg': '#0A120A',
-    'label_fg': '#86EFAC',
-    'header_bg': '#111E11',
-    'header_fg': '#E8F5E9',
-    'progress_bg': '#22C55E',
-    'admin_fg': '#4ADE80',
-    'admin_error_fg': '#FB7185',
-    'menu_bg': '#111E11',
-    'menu_fg': '#E8F5E9',
-    'task_bg': '#1A2E1A',
-    'task_fg': '#A7C4A7',
-    'task_border': '#253D25',
-    'tooltip_bg': '#E8F5E9',
-    'tooltip_fg': '#0A120A',
-    'admin_indicator': '#4ADE80',
-    'user_indicator': '#FBBF24',
-    'card_bg': '#111E11',
-    'card_border': '#1E3520',
-    'label_fg_dim': '#6B8C6B'
-}
-
 # Horizon -- Windows 13 holographic futuristic (2035 aesthetic)
 HOLOGRAPHIC_THEME = {
     'bg': '#030611',              # Deep cosmic substrate
@@ -2350,7 +2108,7 @@ class SecurityUtils:
 class Tooltip:
     """Create a tooltip for a given widget"""
 
-    def __init__(self, widget, text='widget info', theme=DARK_THEME):
+    def __init__(self, widget, text='widget info', theme=HOLOGRAPHIC_THEME):
         self.widget = widget
         self.text = text
         self.theme = theme
@@ -4768,7 +4526,7 @@ class SystemCleanerGUI:
             except (json.JSONDecodeError, OSError, KeyError):
                 pass
 
-            self.root.title("Windows System Cleaner")
+            self.root.title("WinMend")
             self.root.geometry("1200x1050")
             self.root.minsize(960, 780)
             self.root.resizable(True, True)
@@ -4819,60 +4577,6 @@ class SystemCleanerGUI:
         menubar = Menu(self.root, bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
         self.root.config(menu=menubar)
 
-        # View menu
-        view_menu = Menu(menubar, tearoff=0, bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
-        menubar.add_cascade(label="View", menu=view_menu)
-
-        # Theme submenu
-        theme_menu = Menu(view_menu, tearoff=0, bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
-        view_menu.add_cascade(label="Theme", menu=theme_menu)
-
-        self.theme_var = tk.StringVar(value='holographic')
-        theme_menu.add_radiobutton(
-            label="Light",
-            variable=self.theme_var,
-            value='light',
-            command=lambda: self.switch_theme('light')
-        )
-        theme_menu.add_radiobutton(
-            label="Dark",
-            variable=self.theme_var,
-            value='dark',
-            command=lambda: self.switch_theme('dark')
-        )
-        theme_menu.add_separator()
-        theme_menu.add_radiobutton(
-            label="Cyberpunk",
-            variable=self.theme_var,
-            value='cyberpunk',
-            command=lambda: self.switch_theme('cyberpunk')
-        )
-        theme_menu.add_radiobutton(
-            label="Ocean",
-            variable=self.theme_var,
-            value='ocean',
-            command=lambda: self.switch_theme('ocean')
-        )
-        theme_menu.add_radiobutton(
-            label="Sunset",
-            variable=self.theme_var,
-            value='sunset',
-            command=lambda: self.switch_theme('sunset')
-        )
-        theme_menu.add_radiobutton(
-            label="Forest",
-            variable=self.theme_var,
-            value='forest',
-            command=lambda: self.switch_theme('forest')
-        )
-        theme_menu.add_separator()
-        theme_menu.add_radiobutton(
-            label="Holographic",
-            variable=self.theme_var,
-            value='holographic',
-            command=lambda: self.switch_theme('holographic')
-        )
-
         # Keep dark_mode_var for backwards compatibility
         self.dark_mode_var = tk.BooleanVar(value=True)
 
@@ -4909,8 +4613,6 @@ class SystemCleanerGUI:
 
         # Register menu for theme updates
         self.widgets.append(('menu', menubar))
-        self.widgets.append(('menu', view_menu))
-        self.widgets.append(('menu', theme_menu))
         self.widgets.append(('menu', font_menu))
 
     def change_font_size(self, size):
@@ -4954,19 +4656,12 @@ class SystemCleanerGUI:
     def switch_theme(self, theme_name):
         """Switch to a specific theme by name"""
         theme_map = {
-            'light': LIGHT_THEME,
-            'dark': DARK_THEME,
-            'cyberpunk': CYBERPUNK_THEME,
-            'ocean': OCEAN_THEME,
-            'sunset': SUNSET_THEME,
-            'forest': FOREST_THEME,
             'holographic': HOLOGRAPHIC_THEME
         }
 
         if theme_name in theme_map:
             self.current_theme = theme_name
             self.theme = theme_map[theme_name]
-            self.theme_var.set(theme_name)
             # Update dark_mode_var for backwards compatibility
             self.dark_mode_var.set(theme_name != 'light')
         else:
@@ -5173,7 +4868,7 @@ class SystemCleanerGUI:
             title_font = ('Microsport Bold', 34)
             self.title_label = tk.Label(
                 self.header_frame,
-                text="WSC",
+                text="WinMend",
                 font=title_font,
                 bg=self.theme['header_bg'],
                 fg=self.theme['header_fg']
@@ -5497,6 +5192,7 @@ class SystemCleanerGUI:
             self.network_diagnostic_bundle = tk.BooleanVar(value=False)
             self.service_dependency_repair = tk.BooleanVar(value=False)
             self.create_restore_point_guardrail = tk.BooleanVar(value=False)
+            self.activate_windows = tk.BooleanVar(value=False)
 
             # App settings variables
             self.stop_background_apps_var = tk.BooleanVar(value=False)
@@ -6671,7 +6367,7 @@ class SystemCleanerGUI:
             storage_sence_frame.pack(fill=tk.X, pady=3)
             self.storage_sence_checkbox = tk.Checkbutton(
                 storage_sence_frame,
-                text="WSC-Storage Analyzer",
+                text="WinMend Storage Analyzer",
                 variable=self.storage_sence,
                 font=task_font,
                 anchor=tk.W,
@@ -6686,7 +6382,32 @@ class SystemCleanerGUI:
             storage_sence_indicator = tk.Label(storage_sence_frame, text="●", font=('Segoe UI', 10),
                                                bg=self.theme['surface'], fg=self.theme['admin_indicator'])
             storage_sence_indicator.pack(side=tk.RIGHT, padx=5)
-            Tooltip(self.storage_sence_checkbox, "Custom Storage Analyzer Created By CyberBigfoot", self.theme)
+            Tooltip(self.storage_sence_checkbox, "Custom Storage Analyzer Created By EAWTECH", self.theme)
+
+            # Activate Windows/Change Product Key
+            activate_windows_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            activate_windows_frame.pack(fill=tk.X, pady=3)
+            self.activate_windows_checkbox = tk.Checkbutton(
+                activate_windows_frame,
+                text="Activate Windows/Change Product Key",
+                variable=self.activate_windows,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.activate_windows_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.activate_windows_checkbox))
+            self.widget_fonts[self.activate_windows_checkbox] = task_font
+            activate_windows_indicator = tk.Label(
+                activate_windows_frame, text="●", font=('Segoe UI', 10),
+                bg=self.theme['surface'], fg=self.theme['user_indicator']
+            )
+            activate_windows_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.activate_windows_checkbox,
+                    "Activates Windows using a product key via slmgr.vbs", self.theme)
 
             # AutoPilot CSV
             autopilot_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
@@ -8437,11 +8158,20 @@ class SystemCleanerGUI:
             tasks.append("service_dependency_repair")
         if self.create_restore_point_guardrail.get():
             tasks.append("create_restore_point_guardrail")
+        if self.activate_windows.get():
+            tasks.append("activate_windows")
 
         # Resolve contradictory gaming toggles if both are selected.
         if "disable_gaming_features" in tasks and "enable_gaming_features" in tasks:
             tasks.remove("disable_gaming_features")
             self.log_message("Both gaming toggles selected. Keeping 'Turn On All Gaming Features'.")
+
+        # If activate_windows is selected, prompt for product key NOW (on UI thread)
+        self._windows_product_key = None
+        if "activate_windows" in tasks:
+            self._windows_product_key = self._prompt_product_key()
+            if not self._windows_product_key:
+                tasks.remove("activate_windows")
 
         if not tasks:
             self.log_message("No tasks selected!")
@@ -8605,7 +8335,8 @@ class SystemCleanerGUI:
                     "smart_malware_remediation": "Smart Malware Remediation Mode",
                     "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
                     "service_dependency_repair": "Service Dependency Repair",
-                    "create_restore_point_guardrail": "Create Restore Point (Guardrail)"
+                    "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
+                    "activate_windows": "Activate Windows/Change Product Key"
                 }
 
                 display_name = task_display_names.get(task, task)
@@ -8731,6 +8462,8 @@ class SystemCleanerGUI:
                     self.run_service_dependency_repair()
                 elif task == "create_restore_point_guardrail":
                     self.run_create_restore_point_guardrail()
+                elif task == "activate_windows":
+                    self.run_activate_windows()
 
                 self.queue.put(f"TASK_END:{task}")
             except Exception as e:
@@ -8781,7 +8514,8 @@ class SystemCleanerGUI:
             "smart_malware_remediation": "Smart Malware Remediation Mode",
             "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
             "service_dependency_repair": "Service Dependency Repair",
-            "create_restore_point_guardrail": "Create Restore Point (Guardrail)"
+            "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
+            "activate_windows": "Activate Windows/Change Product Key"
         }
 
         try:
@@ -11871,7 +11605,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             return
 
         installer_win = tk.Toplevel(self.root)
-        installer_win.title("Windows System Cleaner - App Installer")
+        installer_win.title("WinMend - App Installer")
         installer_win.geometry("1200x860")
         installer_win.configure(bg=self.theme['bg'])
         installer_win.transient(self.root)
@@ -12711,9 +12445,151 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
         self.queue.put("TASKS_COMPLETE")
 
 
+    def _prompt_product_key(self):
+        """Show a themed dialog to collect the Windows product key. Returns the key or None."""
+        result = [None]
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Activate Windows/Change Product Key \u2014 Enter Product Key")
+        dialog.configure(bg=self.theme['bg'])
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Centre over the main window
+        dialog.update_idletasks()
+        rx = self.root.winfo_rootx() + self.root.winfo_width() // 2
+        ry = self.root.winfo_rooty() + self.root.winfo_height() // 2
+        dialog.geometry(f"420x200+{rx - 210}+{ry - 100}")
+
+        tk.Label(
+            dialog,
+            text="Enter your Windows Product Key:",
+            font=('Segoe UI', 11),
+            bg=self.theme['bg'],
+            fg=self.theme.get('fg', '#EAF6FF')
+        ).pack(pady=(24, 6))
+
+        tk.Label(
+            dialog,
+            text="Format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX",
+            font=('Segoe UI', 9),
+            bg=self.theme['bg'],
+            fg=self.theme.get('task_fg', '#A8C4E0')
+        ).pack()
+
+        entry_var = tk.StringVar()
+        entry = tk.Entry(
+            dialog,
+            textvariable=entry_var,
+            width=32,
+            font=('Consolas', 13),
+            bg=self.theme.get('surface', '#162742'),
+            fg=self.theme.get('fg', '#EAF6FF'),
+            insertbackground=self.theme.get('fg', '#EAF6FF'),
+            relief=tk.FLAT,
+            justify='center'
+        )
+        entry.pack(pady=10, ipady=4)
+        entry.focus_set()
+
+        def on_activate():
+            key = entry_var.get().strip().upper()
+            if len(key) >= 5:
+                result[0] = key
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg=self.theme['bg'])
+        btn_frame.pack(pady=(0, 16))
+        tk.Button(
+            btn_frame, text="Activate", command=on_activate,
+            bg=self.theme.get('primary', '#7FE4FF'), fg='#000000',
+            font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, padx=18, pady=4
+        ).pack(side=tk.LEFT, padx=8)
+        tk.Button(
+            btn_frame, text="Cancel", command=on_cancel,
+            bg=self.theme.get('surface_alt', '#1C3256'), fg=self.theme.get('fg', '#EAF6FF'),
+            font=('Segoe UI', 10), relief=tk.FLAT, padx=18, pady=4
+        ).pack(side=tk.LEFT, padx=8)
+
+        # Allow Enter/Escape shortcuts
+        dialog.bind("<Return>", lambda e: on_activate())
+        dialog.bind("<Escape>", lambda e: on_cancel())
+
+        self.root.wait_window(dialog)
+        return result[0]
+
+    def run_activate_windows(self):
+        """Runs slmgr.vbs /ipk, /ato, /xpr in sequence to activate Windows."""
+        label = "Activate Windows/Change Product Key"
+        key = getattr(self, '_windows_product_key', None)
+        if not key:
+            self.queue.put(f"PROGRESS:{label}:No product key provided \u2014 skipping.")
+            return
+
+        slmgr = r"C:\Windows\System32\slmgr.vbs"
+
+        # ── Step 1: Install product key (/ipk) ─────────────────────────────────
+        self.queue.put(f"PROGRESS:{label}:Step 1/3 \u2014 Installing product key...")
+        try:
+            r = subprocess.run(
+                ["cscript", "//nologo", slmgr, "/ipk", key],
+                capture_output=True, text=True, timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+            output = (r.stdout + r.stderr).strip()
+            if output:
+                self.queue.put(f"PROGRESS:{label}:  {output}")
+            if r.returncode != 0 or "error" in output.lower():
+                self.queue.put(f"PROGRESS:{label}:ERROR \u2014 Product key installation failed.")
+                self.queue.put(f"PROGRESS:{label}:  Verify the key is correct and try again.")
+                return
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{label}:ERROR \u2014 /ipk command failed: {e}")
+            return
+
+        # ── Step 2: Activate online (/ato) ─────────────────────────────────────
+        self.queue.put(f"PROGRESS:{label}:Step 2/3 \u2014 Activating Windows online...")
+        try:
+            r = subprocess.run(
+                ["cscript", "//nologo", slmgr, "/ato"],
+                capture_output=True, text=True, timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+            output = (r.stdout + r.stderr).strip()
+            if output:
+                self.queue.put(f"PROGRESS:{label}:  {output}")
+            if r.returncode != 0 or "error" in output.lower():
+                self.queue.put(f"PROGRESS:{label}:ERROR \u2014 Online activation failed.")
+                self.queue.put(f"PROGRESS:{label}:  Ensure the machine is connected to the internet.")
+                return
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{label}:ERROR \u2014 /ato command failed: {e}")
+            return
+
+        # ── Step 3: Check activation / expiry status (/xpr) ───────────────────
+        self.queue.put(f"PROGRESS:{label}:Step 3/3 \u2014 Checking activation status...")
+        try:
+            r = subprocess.run(
+                ["cscript", "//nologo", slmgr, "/xpr"],
+                capture_output=True, text=True, timeout=30,
+                creationflags=CREATE_NO_WINDOW
+            )
+            output = (r.stdout + r.stderr).strip()
+            if output:
+                self.queue.put(f"PROGRESS:{label}:  {output}")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{label}:Could not retrieve activation status: {e}")
+
+        self.queue.put(f"PROGRESS:{label}:Windows activation completed successfully! \u2713")
+
+
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Windows System Cleaner")
+    parser = argparse.ArgumentParser(description="WinMend")
     parser.add_argument("--clean-temp", type=int, choices=[0, 1], default=0,
                         help="Enable/disable cleaning temporary files (1/0)")
     parser.add_argument("--disk-cleanup", type=int, choices=[0, 1], default=0,
@@ -12830,31 +12706,10 @@ def main():
         # Parse command line arguments
         args = parse_args()
 
-        # Load theme preference if it exists
-        theme = HOLOGRAPHIC_THEME  # Default to holographic
+        # Theme is always Holographic
+        theme = HOLOGRAPHIC_THEME
         theme_name = 'holographic'
         dark_mode = True
-        try:
-            _tp = _get_pref_path("theme_pref.json")
-            if os.path.exists(_tp):
-                with open(_tp, "r") as f:
-                    pref = json.load(f)
-                    saved_name = pref.get("theme", "holographic")
-                    _theme_map = {
-                        'light': LIGHT_THEME,
-                        'dark': DARK_THEME,
-                        'cyberpunk': CYBERPUNK_THEME,
-                        'ocean': OCEAN_THEME,
-                        'sunset': SUNSET_THEME,
-                        'forest': FOREST_THEME,
-                        'holographic': HOLOGRAPHIC_THEME
-                    }
-                    if saved_name in _theme_map:
-                        theme = _theme_map[saved_name]
-                        theme_name = saved_name
-                    dark_mode = saved_name != 'light'
-        except (json.JSONDecodeError, OSError, KeyError):
-            pass
 
         # Load font size preference
         font_size_factor = 1.0
@@ -12879,7 +12734,6 @@ def main():
         startup_log("Creating main application")
         app = SystemCleanerGUI(root, theme)
         app.current_theme = theme_name
-        app.theme_var.set(theme_name)
         app.dark_mode_var.set(dark_mode)
         app.font_size_factor = font_size_factor
         startup_log("Main application created successfully")
