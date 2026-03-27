@@ -1,0 +1,12781 @@
+import argparse
+# wmi, requests, bs4, psutil are lazy-imported where needed for faster startup
+import ctypes
+import html as _html
+import json
+import math
+import os
+import platform
+import queue
+import re
+import shutil
+import socket
+# psutil is lazy-imported in PCReporter methods for faster startup
+import subprocess
+import sys
+import threading
+import time
+import tkinter as tk
+import traceback
+import uuid
+import webbrowser
+import winreg
+from datetime import datetime
+from pathlib import Path
+from tkinter import ttk, messagebox, Menu
+
+import customtkinter as ctk
+
+
+def _load_custom_fonts():
+    """Load bundled fonts so tkinter can use them."""
+    try:
+        base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        for font_file in ('Chopsic.otf', 'ThisAppeal-FreeDemo.ttf', 'Evogria.otf', 'Exo2-Regular.otf', 'Codec-Cold-Bold-trial.ttf', 'Microsport Bold.ttf', 'TT Lakes Neue Trial Regular.ttf', 'NIKEA.otf'):
+            font_path = os.path.join(base, font_file)
+            if os.path.exists(font_path):
+                ctypes.windll.gdi32.AddFontResourceExW(font_path, 0x10, 0)
+    except Exception:
+        pass
+
+
+_load_custom_fonts()
+
+
+def _get_pref_path(filename):
+    """Return path to a preference file stored in %APPDATA%\\WinMend."""
+    appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+    pref_dir = os.path.join(appdata, 'WinMend')
+    os.makedirs(pref_dir, exist_ok=True)
+    return os.path.join(pref_dir, filename)
+
+
+# ==================== INSTALLABLE APPS DATABASE ====================
+INSTALLABLE_APPS = {
+    # ==================== BROWSERS ====================
+    "Brave": {"winget": "Brave.Brave", "category": "Browsers", "description": "Privacy-focused web browser"},
+    "Chrome": {"winget": "Google.Chrome", "category": "Browsers", "description": "Google's web browser"},
+    "Chromium": {"winget": "Hibbiki.Chromium", "category": "Browsers", "description": "Open-source browser foundation"},
+    "Edge": {"winget": "Microsoft.Edge", "category": "Browsers", "description": "Microsoft's modern browser"},
+    "Firefox": {"winget": "Mozilla.Firefox", "category": "Browsers",
+                "description": "Mozilla's privacy-focused browser"},
+    "Firefox ESR": {"winget": "Mozilla.Firefox.ESR", "category": "Browsers", "description": "Extended Support Release"},
+    "Floorp": {"winget": "Ablaze.Floorp", "category": "Browsers", "description": "Firefox-based browser"},
+    "LibreWolf": {"winget": "LibreWolf.LibreWolf", "category": "Browsers",
+                  "description": "Privacy-focused Firefox fork"},
+    "Mullvad Browser": {"winget": "MullvadVPN.MullvadBrowser", "category": "Browsers",
+                        "description": "Privacy browser by Mullvad"},
+    "Pale Moon": {"winget": "MoonchildProductions.PaleMoon", "category": "Browsers",
+                  "description": "Lightweight browser"},
+    "Thorium": {"winget": "Alex313031.Thorium.AVX2", "category": "Browsers", "description": "Speed-optimized Chromium"},
+    "Tor Browser": {"winget": "TorProject.TorBrowser", "category": "Browsers", "description": "Anonymous browsing"},
+    "Ungoogled Chromium": {"winget": "eloston.ungoogled-chromium", "category": "Browsers",
+                           "description": "Chromium without Google"},
+    "Vivaldi": {"winget": "Vivaldi.Vivaldi", "category": "Browsers", "description": "Customizable browser"},
+    "Waterfox": {"winget": "Waterfox.Waterfox", "category": "Browsers", "description": "Privacy-focused Firefox fork"},
+    "Zen Browser": {"winget": "Zen-Team.Zen-Browser", "category": "Browsers",
+                    "description": "Modern Firefox-based browser"},
+    "Falkon": {"winget": "KDE.Falkon", "category": "Browsers", "description": "KDE lightweight browser"},
+
+    # ==================== UTILITIES ====================
+    "7-Zip": {"winget": "7zip.7zip", "category": "Utilities", "description": "File archiver"},
+    "Everything Search": {"winget": "voidtools.Everything", "category": "Utilities", "description": "Fast file search"},
+    "CPU-Z": {"winget": "CPUID.CPU-Z", "category": "Utilities", "description": "CPU information"},
+    "GPU-Z": {"winget": "TechPowerUp.GPU-Z", "category": "Utilities", "description": "GPU information"},
+    "HWiNFO": {"winget": "REALiX.HWiNFO", "category": "Utilities", "description": "Hardware info and monitoring"},
+    "HWMonitor": {"winget": "CPUID.HWMonitor", "category": "Utilities", "description": "Hardware monitoring"},
+    "Crystal Disk Info": {"winget": "CrystalDewWorld.CrystalDiskInfo", "category": "Utilities",
+                          "description": "Disk health monitor"},
+    "Crystal Disk Mark": {"winget": "CrystalDewWorld.CrystalDiskMark", "category": "Utilities",
+                          "description": "Disk benchmark"},
+    "TreeSize Free": {"winget": "JAMSoftware.TreeSize.Free", "category": "Utilities",
+                      "description": "Disk space analyzer"},
+    "WizTree": {"winget": "AntibodySoftware.WizTree", "category": "Utilities",
+                "description": "Fast disk space analyzer"},
+    "SpaceSniffer": {"winget": "UderzoSoftware.SpaceSniffer", "category": "Utilities",
+                     "description": "Disk usage visualization"},
+    "Revo Uninstaller": {"winget": "RevoUninstaller.RevoUninstaller", "category": "Utilities",
+                         "description": "Advanced uninstaller"},
+    "Bulk Crap Uninstaller": {"winget": "Klocman.BulkCrapUninstaller", "category": "Utilities",
+                              "description": "Batch uninstaller"},
+    "Bitwarden": {"winget": "Bitwarden.Bitwarden", "category": "Utilities", "description": "Password manager"},
+    "KeePassXC": {"winget": "KeePassXCTeam.KeePassXC", "category": "Utilities",
+                  "description": "Offline password manager"},
+    "1Password": {"winget": "AgileBits.1Password", "category": "Utilities", "description": "Password manager"},
+    "AnyDesk": {"winget": "AnyDesk.AnyDesk", "category": "Utilities", "description": "Remote desktop"},
+    "TeamViewer": {"winget": "TeamViewer.TeamViewer", "category": "Utilities", "description": "Remote access"},
+    "Parsec": {"winget": "Parsec.Parsec", "category": "Utilities", "description": "Low-latency remote desktop"},
+    "Rufus": {"winget": "Rufus.Rufus", "category": "Utilities", "description": "Bootable USB creator"},
+    "Raspberry Pi Imager": {"winget": "RaspberryPiFoundation.RaspberryPiImager", "category": "Utilities",
+                            "description": "SD card imager"},
+    "DDU": {"winget": "Wagnardsoft.DisplayDriverUninstaller", "category": "Utilities",
+            "description": "Display driver uninstaller"},
+    "NVCleanstall": {"winget": "TechPowerUp.NVCleanstall", "category": "Utilities",
+                     "description": "NVIDIA driver customizer"},
+    "MSI Afterburner": {"winget": "Guru3D.Afterburner", "category": "Utilities", "description": "GPU overclocking"},
+    "qBittorrent": {"winget": "qBittorrent.qBittorrent", "category": "Utilities", "description": "BitTorrent client"},
+    "Transmission": {"winget": "Transmission.Transmission", "category": "Utilities",
+                     "description": "Lightweight torrent client"},
+    "Deluge": {"winget": "DelugeTeam.Deluge", "category": "Utilities", "description": "BitTorrent client"},
+    "Flow Launcher": {"winget": "Flow-Launcher.Flow-Launcher", "category": "Utilities",
+                      "description": "Keystroke launcher"},
+    "Open Shell": {"winget": "Open-Shell.Open-Shell-Menu", "category": "Utilities",
+                   "description": "Start Menu replacement"},
+    "F.lux": {"winget": "flux.flux", "category": "Utilities", "description": "Blue light filter"},
+    "AutoHotkey": {"winget": "AutoHotkey.AutoHotkey", "category": "Utilities", "description": "Automation scripting"},
+    "Barrier": {"winget": "DebaucheeOpenSourceGroup.Barrier", "category": "Utilities", "description": "Software KVM"},
+    "CopyQ": {"winget": "hluk.CopyQ", "category": "Utilities", "description": "Clipboard manager"},
+    "Ditto": {"winget": "Ditto.Ditto", "category": "Utilities", "description": "Clipboard extension"},
+    "TranslucentTB": {"winget": "9PF4KZ2VN4W9", "category": "Utilities", "description": "Taskbar customization"},
+    "UniGetUI": {"winget": "MartiCliment.UniGetUI", "category": "Utilities", "description": "Package manager GUI"},
+    "Lively Wallpaper": {"winget": "rocksdanister.LivelyWallpaper", "category": "Utilities",
+                         "description": "Animated wallpapers"},
+    "Rainmeter": {"winget": "Rainmeter.Rainmeter", "category": "Utilities", "description": "Desktop customization"},
+    "Quicklook": {"winget": "QL-Win.QuickLook", "category": "Utilities", "description": "macOS-like file preview"},
+    "LocalSend": {"winget": "LocalSend.LocalSend", "category": "Utilities", "description": "AirDrop alternative"},
+    "Tailscale": {"winget": "tailscale.tailscale", "category": "Utilities", "description": "VPN mesh network"},
+    "ZeroTier One": {"winget": "ZeroTier.ZeroTierOne", "category": "Utilities",
+                     "description": "Software-defined networking"},
+    "Sandboxie Plus": {"winget": "Sandboxie.Plus", "category": "Utilities", "description": "Sandbox isolation"},
+    "Oracle VirtualBox": {"winget": "Oracle.VirtualBox", "category": "Utilities", "description": "Virtualization"},
+    "Google Drive": {"winget": "Google.GoogleDrive", "category": "Utilities", "description": "Cloud storage sync"},
+    "Nextcloud Desktop": {"winget": "Nextcloud.NextcloudDesktop", "category": "Utilities",
+                          "description": "Self-hosted cloud sync"},
+    "Duplicati": {"winget": "Duplicati.Duplicati", "category": "Utilities", "description": "Backup solution"},
+    "Process Lasso": {"winget": "BitSum.ProcessLasso", "category": "Utilities", "description": "Process optimizer"},
+    "BleachBit": {"winget": "BleachBit.BleachBit", "category": "Utilities", "description": "System cleaner"},
+    "Glary Utilities": {"winget": "Glarysoft.GlaryUtilities", "category": "Utilities",
+                        "description": "System optimizer"},
+    "DevToys": {"winget": "DevToys-app.DevToys", "category": "Utilities", "description": "Developer utilities"},
+    "NanaZip": {"winget": "M2Team.NanaZip", "category": "Utilities", "description": "Modern 7-Zip fork"},
+    "PeaZip": {"winget": "Giorgiotani.Peazip", "category": "Utilities", "description": "Archive manager"},
+    "WinRAR": {"winget": "RARLab.WinRAR", "category": "Utilities", "description": "Archive manager"},
+    "Malwarebytes": {"winget": "Malwarebytes.Malwarebytes", "category": "Utilities", "description": "Anti-malware"},
+    "OpenRGB": {"winget": "OpenRGB.OpenRGB", "category": "Utilities", "description": "RGB lighting control"},
+    "SignalRGB": {"winget": "WhirlwindFX.SignalRgb", "category": "Utilities", "description": "RGB sync software"},
+    "KDE Connect": {"winget": "KDE.KDEConnect", "category": "Utilities", "description": "Phone-PC integration"},
+    "Twinkle Tray": {"winget": "xanderfrangos.twinkletray", "category": "Utilities",
+                     "description": "Monitor brightness control"},
+    "Monitorian": {"winget": "emoacht.Monitorian", "category": "Utilities",
+                   "description": "Monitor brightness control"},
+    "Snappy Driver Installer Origin": {"winget": "GlennDelahoy.SnappyDriverInstallerOrigin", "category": "Utilities",
+                                       "description": "Driver updater"},
+    "Nilesoft Shell": {"winget": "Nilesoft.Shell", "category": "Utilities", "description": "Context menu extension"},
+    "OpenHashTab": {"winget": "namazso.OpenHashTab", "category": "Utilities", "description": "File hash checker"},
+    "LockHunter": {"winget": "CrystalRich.LockHunter", "category": "Utilities", "description": "File unlocker"},
+    "Total Commander": {"winget": "Ghisler.TotalCommander", "category": "Utilities", "description": "File manager"},
+    "Alacritty": {"winget": "Alacritty.Alacritty", "category": "Utilities", "description": "Fast terminal"},
+    "Tabby": {"winget": "Eugeny.Tabby", "category": "Utilities", "description": "Modern terminal"},
+    "Nushell": {"winget": "Nushell.Nushell", "category": "Utilities", "description": "Modern shell"},
+    "Gsudo": {"winget": "gerardog.gsudo", "category": "Utilities", "description": "Windows sudo"},
+    "SuperF4": {"winget": "StefanSundin.Superf4", "category": "Utilities", "description": "Force kill apps"},
+    "MSEdgeRedirect": {"winget": "rcmaehl.MSEdgeRedirect", "category": "Utilities",
+                       "description": "Redirect Edge links"},
+    "Windows Firewall Control": {"winget": "BiniSoft.WindowsFirewallControl", "category": "Utilities",
+                                 "description": "Firewall GUI"},
+    "Auto Dark Mode": {"winget": "Armin2208.WindowsAutoNightMode", "category": "Utilities",
+                       "description": "Auto light/dark theme"},
+    "GlazeWM": {"winget": "glzr-io.glazewm", "category": "Utilities", "description": "Tiling window manager"},
+    "FanControl": {"winget": "Rem0o.FanControl", "category": "Utilities", "description": "Fan speed control"},
+    "Windhawk": {"winget": "RamenSoftware.Windhawk", "category": "Utilities", "description": "Windows customization"},
+    "WinPaletter": {"winget": "Abdelrhman-AK.WinPaletter", "category": "Utilities",
+                    "description": "Windows color customizer"},
+    "OFGB": {"winget": "xM4ddy.OFGB", "category": "Utilities", "description": "Windows 11 ad remover"},
+    "Lenovo Legion Toolkit": {"winget": "BartoszCichecki.LenovoLegionToolkit", "category": "Utilities",
+                              "description": "Legion laptop utility"},
+    "Dropbox": {"winget": "Dropbox.Dropbox", "category": "Utilities", "description": "Cloud storage"},
+    "OrcaSlicer": {"winget": "SoftFever.OrcaSlicer", "category": "Utilities", "description": "3D printer slicer"},
+    "PrusaSlicer": {"winget": "Prusa3d.PrusaSlicer", "category": "Utilities", "description": "3D printer slicer"},
+    "Windows PC Health Check": {"winget": "Microsoft.WindowsPCHealthCheck", "category": "Utilities",
+                                "description": "Win11 compatibility check"},
+    "Xtreme Download Manager": {"winget": "subhra74.XtremeDownloadManager", "category": "Utilities",
+                                "description": "Download manager"},
+    "JDownloader": {"winget": "AppWork.JDownloader", "category": "Utilities", "description": "Download manager"},
+    "Motrix": {"winget": "agalwood.Motrix", "category": "Utilities", "description": "Download manager"},
+    "SyncTrayzor": {"winget": "GermanCoding.SyncTrayzor", "category": "Utilities", "description": "Syncthing tray app"},
+    "Fastfetch": {"winget": "Fastfetch-cli.Fastfetch", "category": "Utilities", "description": "System info display"},
+    "Neofetch Win": {"winget": "nepnep.neofetch-win", "category": "Utilities", "description": "System info display"},
+    "Link Shell Extension": {"winget": "HermannSchinagl.LinkShellExtension", "category": "Utilities",
+                             "description": "Symbolic link creator"},
+    "Espanso": {"winget": "Espanso.Espanso", "category": "Utilities", "description": "Text expander"},
+    "Carnac": {"winget": "code52.Carnac", "category": "Utilities", "description": "Keystroke visualizer"},
+    "Meld": {"winget": "Meld.Meld", "category": "Utilities", "description": "Visual diff tool"},
+    "XnView": {"winget": "XnSoft.XnView.Classic", "category": "Utilities", "description": "Image viewer"},
+    "JPEG View": {"winget": "sylikc.JPEGView", "category": "Utilities", "description": "Fast image viewer"},
+    "Zoxide": {"winget": "ajeetdsouza.zoxide", "category": "Utilities", "description": "Smarter cd command"},
+    "Bat": {"winget": "sharkdp.bat", "category": "Utilities", "description": "Cat alternative"},
+    "Ripgrep": {"winget": "BurntSushi.ripgrep.MSVC", "category": "Utilities", "description": "Fast grep tool"},
+    "Fzf": {"winget": "junegunn.fzf", "category": "Utilities", "description": "Fuzzy finder"},
+    "TeraCopy": {"winget": "CodeSector.TeraCopy", "category": "Utilities", "description": "Fast file copy"},
+    "WizFile": {"winget": "AntibodySoftware.WizFile", "category": "Utilities", "description": "Fast file search"},
+    "SageThumbs": {"winget": "CherubicSoftware.SageThumbs", "category": "Utilities",
+                   "description": "Enhanced thumbnails"},
+    "Wise Program Uninstaller": {"winget": "WiseCleaner.WiseProgramUninstaller", "category": "Utilities",
+                                 "description": "Program uninstaller"},
+    "WiseToys": {"winget": "WiseCleaner.WiseToys", "category": "Utilities",
+                 "description": "Windows utilities collection"},
+    "TightVNC": {"winget": "GlavSoft.TightVNC", "category": "Utilities", "description": "VNC server/client"},
+    "UltraVNC": {"winget": "uvncbvba.UltraVnc", "category": "Utilities", "description": "VNC remote desktop"},
+    "Dual Monitor Tools": {"winget": "GNE.DualMonitorTools", "category": "Utilities",
+                           "description": "Multi-monitor utilities"},
+    "Borderless Gaming": {"winget": "Codeusa.BorderlessGaming", "category": "Utilities",
+                          "description": "Window borderless mode"},
+    "Compact GUI": {"winget": "IridiumIO.CompactGUI", "category": "Utilities", "description": "Folder compression"},
+    "ExifCleaner": {"winget": "szTheory.exifcleaner", "category": "Utilities", "description": "Metadata remover"},
+    "CapFrameX": {"winget": "CXWorld.CapFrameX", "category": "Utilities", "description": "Frame time analysis"},
+    "Intel PresentMon": {"winget": "Intel.PresentMon.Beta", "category": "Utilities",
+                         "description": "Gaming performance overlay"},
+    "Ente Auth": {"winget": "ente-io.auth-desktop", "category": "Utilities", "description": "2FA authenticator"},
+    "Proton Authenticator": {"winget": "Proton.ProtonAuthenticator", "category": "Utilities",
+                             "description": "Proton 2FA app"},
+    "Wazuh": {"winget": "Wazuh.WazuhAgent", "category": "Utilities", "description": "Security monitoring"},
+    "File Converter": {"winget": "AdrienAllard.FileConverter", "category": "Utilities",
+                       "description": "Context menu converter"},
+    "OPAutoClicker": {"winget": "OPAutoClicker.OPAutoClicker", "category": "Utilities", "description": "Auto clicker"},
+    "VistaSwitcher": {"winget": "ntwind.VistaSwitcher", "category": "Utilities", "description": "Alt-Tab replacement"},
+    "Ambie White Noise": {"winget": "9P07XNM5CHP0", "category": "Utilities", "description": "White noise app"},
+    "Magic Wormhole": {"winget": "magic-wormhole.magic-wormhole", "category": "Utilities",
+                       "description": "Secure file transfer"},
+    "croc": {"winget": "schollz.croc", "category": "Utilities", "description": "Secure file transfer"},
+    "JoyToKey": {"winget": "JTKsoftware.JoyToKey", "category": "Utilities", "description": "Controller to keyboard"},
+    "ForceAutoHDR": {"winget": "ForceAutoHDR.7gxycn08", "category": "Utilities", "description": "Force Auto HDR"},
+    "Syncthingtray": {"winget": "Martchus.syncthingtray", "category": "Utilities", "description": "Syncthing tray app"},
+    "Spacedrive": {"winget": "spacedrive.Spacedrive", "category": "Utilities",
+                   "description": "Cross-platform file manager"},
+    "HxD Hex Editor": {"winget": "MHNexus.HxD", "category": "Utilities", "description": "Hex editor"},
+    "Bulk Rename Utility": {"winget": "TGRMNSoftware.BulkRenameUtility", "category": "Utilities",
+                            "description": "Batch rename files"},
+    "Advanced Renamer": {"winget": "HulubuluSoftware.AdvancedRenamer", "category": "Utilities",
+                         "description": "Batch rename files"},
+
+    # ==================== DEVELOPMENT ====================
+    "VS Code": {"winget": "Microsoft.VisualStudioCode", "category": "Development", "description": "Code editor"},
+    "VS Codium": {"winget": "VSCodium.VSCodium", "category": "Development", "description": "Open-source VS Code"},
+    "Visual Studio 2022": {"winget": "Microsoft.VisualStudio.2022.Community", "category": "Development",
+                           "description": "Full IDE"},
+    "Sublime Text": {"winget": "SublimeHQ.SublimeText.4", "category": "Development", "description": "Text editor"},
+    "Sublime Merge": {"winget": "SublimeHQ.SublimeMerge", "category": "Development", "description": "Git client"},
+    "Neovim": {"winget": "Neovim.Neovim", "category": "Development", "description": "Modern Vim"},
+    "Helix": {"winget": "Helix.Helix", "category": "Development", "description": "Post-modern text editor"},
+    "Zed": {"winget": "Zed.Zed", "category": "Development", "description": "High-performance editor"},
+    "Pulsar": {"winget": "Pulsar-Edit.Pulsar", "category": "Development", "description": "Community-led text editor"},
+    "Git": {"winget": "Git.Git", "category": "Development", "description": "Version control"},
+    "GitHub Desktop": {"winget": "GitHub.GitHubDesktop", "category": "Development", "description": "GitHub GUI client"},
+    "GitHub CLI": {"winget": "GitHub.cli", "category": "Development", "description": "GitHub CLI"},
+    "GitKraken": {"winget": "Axosoft.GitKraken", "category": "Development", "description": "Git GUI"},
+    "Git Extensions": {"winget": "GitExtensionsTeam.GitExtensions", "category": "Development",
+                       "description": "Git GUI"},
+    "Git Butler": {"winget": "GitButler.GitButler", "category": "Development", "description": "Modern Git client"},
+    "Fork": {"winget": "Fork.Fork", "category": "Development", "description": "Fast Git client"},
+    "Gitify": {"winget": "Gitify.Gitify", "category": "Development", "description": "GitHub notifications"},
+    "Lazygit": {"winget": "JesseDuffield.lazygit", "category": "Development", "description": "Terminal Git UI"},
+    "Docker Desktop": {"winget": "Docker.DockerDesktop", "category": "Development",
+                       "description": "Container platform"},
+    "Python3": {"winget": "Python.Python.3.14", "category": "Development", "description": "Python language"},
+    "Anaconda": {"winget": "Anaconda.Anaconda3", "category": "Development", "description": "Python distribution"},
+    "Miniconda": {"winget": "Anaconda.Miniconda3", "category": "Development", "description": "Minimal conda"},
+    "Pixi": {"winget": "prefix-dev.pixi", "category": "Development", "description": "Fast package manager"},
+    "NodeJS": {"winget": "OpenJS.NodeJS", "category": "Development", "description": "JavaScript runtime"},
+    "NodeJS LTS": {"winget": "OpenJS.NodeJS.LTS", "category": "Development", "description": "LTS Node version"},
+    "NVM for Windows": {"winget": "CoreyButler.NVMforWindows", "category": "Development",
+                        "description": "Node version manager"},
+    "Fast Node Manager": {"winget": "Schniz.fnm", "category": "Development", "description": "Fast Node manager"},
+    "Yarn": {"winget": "Yarn.Yarn", "category": "Development", "description": "JS package manager"},
+    "Rust": {"winget": "Rustlang.Rust.MSVC", "category": "Development", "description": "Rust language"},
+    "Go": {"winget": "GoLang.Go", "category": "Development", "description": "Go language"},
+    "Swift": {"winget": "Swift.Toolchain", "category": "Development", "description": "Swift language"},
+    "CMake": {"winget": "Kitware.CMake", "category": "Development", "description": "Build system"},
+    "Clink": {"winget": "chrisant996.Clink", "category": "Development", "description": "CMD enhancement"},
+    "Corretto 8": {"winget": "Amazon.Corretto.8.JDK", "category": "Development", "description": "Java 8 JDK"},
+    "Corretto 11": {"winget": "Amazon.Corretto.11.JDK", "category": "Development", "description": "Java 11 JDK"},
+    "Corretto 17": {"winget": "Amazon.Corretto.17.JDK", "category": "Development", "description": "Java 17 JDK"},
+    "Corretto 21": {"winget": "Amazon.Corretto.21.JDK", "category": "Development", "description": "Java 21 JDK"},
+    "Eclipse Temurin": {"winget": "EclipseAdoptium.Temurin.21.JDK", "category": "Development",
+                        "description": "OpenJDK distribution"},
+    "JetBrains Toolbox": {"winget": "JetBrains.Toolbox", "category": "Development",
+                          "description": "JetBrains tool manager"},
+    "Postman": {"winget": "Postman.Postman", "category": "Development", "description": "API development"},
+    "Oh My Posh": {"winget": "JanDeDobbeleer.OhMyPosh", "category": "Development", "description": "Shell prompt"},
+    "Starship": {"winget": "starship", "category": "Development", "description": "Cross-shell prompt"},
+    "Wezterm": {"winget": "wez.wezterm", "category": "Development", "description": "GPU terminal"},
+    "Godot Engine": {"winget": "GodotEngine.GodotEngine", "category": "Development", "description": "Game engine"},
+    "Unity Hub": {"winget": "Unity.UnityHub", "category": "Development", "description": "Unity game engine"},
+    "Vagrant": {"winget": "Hashicorp.Vagrant", "category": "Development", "description": "Virtual environments"},
+    "DaxStudio": {"winget": "DaxStudio.DaxStudio", "category": "Development", "description": "DAX query tool"},
+    "Thonny": {"winget": "AivarAnnamaa.Thonny", "category": "Development", "description": "Python IDE for beginners"},
+    "Mu Editor": {"winget": "Mu.Mu", "category": "Development", "description": "Python editor"},
+    "Aegisub": {"winget": "Aegisub.Aegisub", "category": "Development", "description": "Subtitle editor"},
+
+    # ==================== MULTIMEDIA TOOLS ====================
+    "VLC": {"winget": "VideoLAN.VLC", "category": "Multimedia Tools", "description": "Media player"},
+    "Media Player Classic": {"winget": "clsid2.mpc-hc", "category": "Multimedia Tools",
+                             "description": "Classic media player"},
+    "OBS Studio": {"winget": "OBSProject.OBSStudio", "category": "Multimedia Tools",
+                   "description": "Streaming/recording"},
+    "HandBrake": {"winget": "HandBrake.HandBrake", "category": "Multimedia Tools", "description": "Video transcoder"},
+    "GIMP": {"winget": "GIMP.GIMP.3", "category": "Multimedia Tools", "description": "Image editor"},
+    "Inkscape": {"winget": "Inkscape.Inkscape", "category": "Multimedia Tools", "description": "Vector graphics"},
+    "Krita": {"winget": "KDE.Krita", "category": "Multimedia Tools", "description": "Digital painting"},
+    "Paint.NET": {"winget": "dotPDN.PaintDotNet", "category": "Multimedia Tools", "description": "Image editor"},
+    "Blender": {"winget": "BlenderFoundation.Blender", "category": "Multimedia Tools",
+                "description": "3D creation suite"},
+    "FreeCAD": {"winget": "FreeCAD.FreeCAD", "category": "Multimedia Tools", "description": "3D CAD modeler"},
+    "OpenSCAD": {"winget": "OpenSCAD.OpenSCAD", "category": "Multimedia Tools", "description": "Script-based 3D CAD"},
+    "Audacity": {"winget": "Audacity.Audacity", "category": "Multimedia Tools", "description": "Audio editor"},
+    "Kdenlive": {"winget": "KDE.Kdenlive", "category": "Multimedia Tools", "description": "Video editor"},
+    "Shotcut": {"winget": "Meltytech.Shotcut", "category": "Multimedia Tools", "description": "Video editor"},
+    "ShareX": {"winget": "ShareX.ShareX", "category": "Multimedia Tools", "description": "Screenshot tool"},
+    "Flameshot": {"winget": "Flameshot.Flameshot", "category": "Multimedia Tools", "description": "Screenshot tool"},
+    "Greenshot": {"winget": "Greenshot.Greenshot", "category": "Multimedia Tools", "description": "Screenshot tool"},
+    "Lightshot": {"winget": "Skillbrains.Lightshot", "category": "Multimedia Tools", "description": "Screenshot tool"},
+    "ImageGlass": {"winget": "DuongDieuPhap.ImageGlass", "category": "Multimedia Tools", "description": "Image viewer"},
+    "darktable": {"winget": "darktable.darktable", "category": "Multimedia Tools", "description": "Photo editor"},
+    "digiKam": {"winget": "KDE.digikam", "category": "Multimedia Tools", "description": "Photo manager"},
+    "Fire Alpaca": {"winget": "FireAlpaca.FireAlpaca", "category": "Multimedia Tools",
+                    "description": "Digital painting"},
+    "FFmpeg": {"winget": "Gyan.FFmpeg", "category": "Multimedia Tools", "description": "Multimedia framework"},
+    "Plex Media Server": {"winget": "Plex.PlexMediaServer", "category": "Multimedia Tools",
+                          "description": "Media server"},
+    "Plex Desktop": {"winget": "Plex.Plex", "category": "Multimedia Tools", "description": "Plex client"},
+    "Jellyfin Server": {"winget": "Jellyfin.Server", "category": "Multimedia Tools",
+                        "description": "Open-source media server"},
+    "Jellyfin Media Player": {"winget": "Jellyfin.JellyfinMediaPlayer", "category": "Multimedia Tools",
+                              "description": "Jellyfin client"},
+    "Kodi": {"winget": "XBMCFoundation.Kodi", "category": "Multimedia Tools", "description": "Media center"},
+    "Stremio": {"winget": "Stremio.Stremio", "category": "Multimedia Tools", "description": "Stream organizer"},
+    "AIMP": {"winget": "AIMP.AIMP", "category": "Multimedia Tools", "description": "Music player"},
+    "foobar2000": {"winget": "PeterPawlowski.foobar2000", "category": "Multimedia Tools",
+                   "description": "Music player"},
+    "MusicBee": {"winget": "MusicBee.MusicBee", "category": "Multimedia Tools", "description": "Music player"},
+    "Clementine": {"winget": "Clementine.Clementine", "category": "Multimedia Tools", "description": "Music player"},
+    "Strawberry": {"winget": "StrawberryMusicPlayer.Strawberry", "category": "Multimedia Tools",
+                   "description": "Music player"},
+    "Harmonoid": {"winget": "Harmonoid.Harmonoid", "category": "Multimedia Tools", "description": "Music player"},
+    "iTunes": {"winget": "Apple.iTunes", "category": "Multimedia Tools", "description": "Apple media player"},
+    "EarTrumpet": {"winget": "File-New-Project.EarTrumpet", "category": "Multimedia Tools",
+                   "description": "Audio control"},
+    "Voicemeeter": {"winget": "VB-Audio.Voicemeeter", "category": "Multimedia Tools",
+                    "description": "Virtual audio mixer"},
+    "Voicemeeter Potato": {"winget": "VB-Audio.Voicemeeter.Potato", "category": "Multimedia Tools",
+                           "description": "Advanced audio mixer"},
+    "FxSound": {"winget": "FxSound.FxSound", "category": "Multimedia Tools", "description": "Audio enhancer"},
+    "K-Lite Codec Pack": {"winget": "CodecGuide.K-LiteCodecPack.Standard", "category": "Multimedia Tools",
+                          "description": "Media codecs"},
+    "ImgBurn": {"winget": "LIGHTNINGUK.ImgBurn", "category": "Multimedia Tools", "description": "Disc burning"},
+    "MuseScore": {"winget": "Musescore.Musescore", "category": "Multimedia Tools", "description": "Music notation"},
+    "Mp3tag": {"winget": "Mp3tag.Mp3tag", "category": "Multimedia Tools", "description": "Audio metadata editor"},
+    "TagScanner": {"winget": "SergeySerkov.TagScanner", "category": "Multimedia Tools",
+                   "description": "Audio tag editor"},
+    "nomacs": {"winget": "nomacs.nomacs", "category": "Multimedia Tools", "description": "Image viewer"},
+    "nGlide": {"winget": "ZeusSoftware.nGlide", "category": "Multimedia Tools", "description": "3Dfx Glide wrapper"},
+    "Modern Flyouts": {"winget": "ModernFlyouts.ModernFlyouts", "category": "Multimedia Tools",
+                       "description": "Modern volume flyout"},
+    "Tidal": {"winget": "9NNCB5BS59PH", "category": "Multimedia Tools", "description": "Hi-Fi streaming"},
+    "Videomass": {"winget": "GianlucaPernigotto.Videomass", "category": "Multimedia Tools",
+                  "description": "FFmpeg GUI"},
+    "Yt-dlp": {"winget": "yt-dlp.yt-dlp", "category": "Multimedia Tools", "description": "Video downloader"},
+    "QGIS": {"winget": "OSGeo.QGIS", "category": "Multimedia Tools", "description": "GIS software"},
+    "SMPlayer": {"winget": "SMPlayer.SMPlayer", "category": "Multimedia Tools", "description": "Media player"},
+    "NDI Tools": {"winget": "NDI.NDITools", "category": "Multimedia Tools", "description": "Video over IP"},
+    "KiCad": {"winget": "KiCad.KiCad", "category": "Multimedia Tools", "description": "EDA software"},
+    "Subtitle Edit": {"winget": "Nikse.SubtitleEdit", "category": "Multimedia Tools", "description": "Subtitle editor"},
+
+    # ==================== COMMUNICATIONS ====================
+    "Discord": {"winget": "Discord.Discord", "category": "Communications", "description": "Chat platform"},
+    "Vesktop": {"winget": "Vencord.Vesktop", "category": "Communications", "description": "Enhanced Discord"},
+    "Slack": {"winget": "SlackTechnologies.Slack", "category": "Communications", "description": "Team collaboration"},
+    "Teams": {"winget": "Microsoft.Teams", "category": "Communications", "description": "Microsoft Teams"},
+    "Zoom": {"winget": "Zoom.Zoom", "category": "Communications", "description": "Video conferencing"},
+    "Telegram": {"winget": "Telegram.TelegramDesktop", "category": "Communications", "description": "Messaging app"},
+    "Unigram": {"winget": "Telegram.Unigram", "category": "Communications", "description": "Telegram for Windows"},
+    "Signal": {"winget": "OpenWhisperSystems.Signal", "category": "Communications", "description": "Secure messaging"},
+    "Element": {"winget": "Element.Element", "category": "Communications", "description": "Matrix client"},
+    "Session": {"winget": "Session.Session", "category": "Communications", "description": "Private messaging"},
+    "Revolt": {"winget": "Revolt.RevoltDesktop", "category": "Communications", "description": "Discord alternative"},
+    "Beeper": {"winget": "Beeper.Beeper", "category": "Communications", "description": "Universal chat app"},
+    "Ferdium": {"winget": "Ferdium.Ferdium", "category": "Communications", "description": "Multi-messenger"},
+    "Thunderbird": {"winget": "Mozilla.Thunderbird", "category": "Communications", "description": "Email client"},
+    "Betterbird": {"winget": "Betterbird.Betterbird", "category": "Communications", "description": "Thunderbird fork"},
+    "Viber": {"winget": "Rakuten.Viber", "category": "Communications", "description": "Messaging app"},
+    "Hexchat": {"winget": "HexChat.HexChat", "category": "Communications", "description": "IRC client"},
+    "Jami": {"winget": "SFLinux.Jami", "category": "Communications", "description": "VoIP service"},
+    "Linphone": {"winget": "BelledonneCommunications.Linphone", "category": "Communications",
+                 "description": "VoIP app"},
+    "QTox": {"winget": "Tox.qTox", "category": "Communications", "description": "P2P messaging"},
+    "Chatterino": {"winget": "ChatterinoTeam.Chatterino", "category": "Communications",
+                   "description": "Twitch chat client"},
+    "Zulip": {"winget": "Zulip.Zulip", "category": "Communications", "description": "Team chat"},
+
+    # ==================== GAMES ====================
+    "Steam": {"winget": "Valve.Steam", "category": "Games", "description": "Gaming platform"},
+    "Epic Games Launcher": {"winget": "EpicGames.EpicGamesLauncher", "category": "Games",
+                            "description": "Epic Games store"},
+    "GOG Galaxy": {"winget": "GOG.Galaxy", "category": "Games", "description": "GOG game client"},
+    "EA App": {"winget": "ElectronicArts.EADesktop", "category": "Games", "description": "EA gaming platform"},
+    "Ubisoft Connect": {"winget": "Ubisoft.Connect", "category": "Games", "description": "Ubisoft launcher"},
+    "Heroic Games Launcher": {"winget": "HeroicGamesLauncher.HeroicGamesLauncher", "category": "Games",
+                              "description": "Epic Games alternative"},
+    "Itch.io": {"winget": "ItchIo.Itch", "category": "Games", "description": "Indie game platform"},
+    "Playnite": {"winget": "Playnite.Playnite", "category": "Games", "description": "Game library manager"},
+    "Prism Launcher": {"winget": "PrismLauncher.PrismLauncher", "category": "Games",
+                       "description": "Minecraft launcher"},
+    "GeForce NOW": {"winget": "Nvidia.GeForceNow", "category": "Games", "description": "Cloud gaming"},
+    "Moonlight": {"winget": "MoonlightGameStreamingProject.Moonlight", "category": "Games",
+                  "description": "Game streaming client"},
+    "Sunshine": {"winget": "LizardByte.Sunshine", "category": "Games", "description": "Game streaming server"},
+    "PS Remote Play": {"winget": "PlayStation.PSRemotePlay", "category": "Games",
+                       "description": "PlayStation streaming"},
+    "Virtual Desktop Streamer": {"winget": "VirtualDesktop.Streamer", "category": "Games",
+                                 "description": "VR streaming"},
+    "SideQuestVR": {"winget": "SideQuestVR.SideQuest", "category": "Games", "description": "VR app sideloader"},
+    "TCNO Account Switcher": {"winget": "TechNobo.TcNoAccountSwitcher", "category": "Games",
+                              "description": "Game account switcher"},
+    "Clone Hero": {"winget": "CloneHeroTeam.CloneHero", "category": "Games", "description": "Guitar Hero clone"},
+    "Cemu": {"winget": "Cemu.Cemu", "category": "Games", "description": "Wii U emulator"},
+    "XEMU": {"winget": "xemu-project.xemu", "category": "Games", "description": "Xbox emulator"},
+    "Emulation Station": {"winget": "Emulationstation.Emulationstation", "category": "Games",
+                          "description": "Emulator frontend"},
+
+    # ==================== MICROSOFT TOOLS ====================
+    ".NET Runtime 3.1": {"winget": "Microsoft.DotNet.DesktopRuntime.3_1", "category": "Microsoft Tools",
+                         "description": ".NET 3.1 runtime"},
+    ".NET Runtime 5": {"winget": "Microsoft.DotNet.DesktopRuntime.5", "category": "Microsoft Tools",
+                       "description": ".NET 5 runtime"},
+    ".NET Runtime 6": {"winget": "Microsoft.DotNet.DesktopRuntime.6", "category": "Microsoft Tools",
+                       "description": ".NET 6 runtime"},
+    ".NET Runtime 7": {"winget": "Microsoft.DotNet.DesktopRuntime.7", "category": "Microsoft Tools",
+                       "description": ".NET 7 runtime"},
+    ".NET Runtime 8": {"winget": "Microsoft.DotNet.DesktopRuntime.8", "category": "Microsoft Tools",
+                       "description": ".NET 8 runtime"},
+    ".NET Runtime 9": {"winget": "Microsoft.DotNet.DesktopRuntime.9", "category": "Microsoft Tools",
+                       "description": ".NET 9 runtime"},
+    "VC++ 2015-2022 x86": {"winget": "Microsoft.VCRedist.2015+.x86", "category": "Microsoft Tools",
+                           "description": "Visual C++ runtime"},
+    "VC++ 2015-2022 x64": {"winget": "Microsoft.VCRedist.2015+.x64", "category": "Microsoft Tools",
+                           "description": "Visual C++ runtime"},
+    "PowerShell 7": {"winget": "Microsoft.PowerShell", "category": "Microsoft Tools",
+                     "description": "Modern PowerShell"},
+    "PowerToys": {"winget": "Microsoft.PowerToys", "category": "Microsoft Tools",
+                  "description": "Power user utilities"},
+    "Windows Terminal": {"winget": "Microsoft.WindowsTerminal", "category": "Microsoft Tools",
+                         "description": "Modern terminal"},
+    "OneDrive": {"winget": "Microsoft.OneDrive", "category": "Microsoft Tools", "description": "Cloud storage"},
+    "Azure Data Studio": {"winget": "Microsoft.AzureDataStudio", "category": "Microsoft Tools",
+                          "description": "Data management"},
+    "SQL Server Management Studio": {"winget": "Microsoft.SQLServerManagementStudio", "category": "Microsoft Tools",
+                                     "description": "SQL database management"},
+    "Power Automate Desktop": {"winget": "Microsoft.PowerAutomateDesktop", "category": "Microsoft Tools",
+                               "description": "Desktop automation"},
+    "Power BI": {"winget": "Microsoft.PowerBI", "category": "Microsoft Tools", "description": "Data visualization"},
+    "NuGet": {"winget": "Microsoft.NuGet", "category": "Microsoft Tools", "description": ".NET package manager"},
+    "Autoruns": {"winget": "Microsoft.Sysinternals.Autoruns", "category": "Microsoft Tools",
+                 "description": "Startup manager"},
+    "Process Monitor": {"winget": "Microsoft.Sysinternals.ProcessMonitor", "category": "Microsoft Tools",
+                        "description": "Process monitor"},
+    "TCPView": {"winget": "Microsoft.Sysinternals.TCPView", "category": "Microsoft Tools",
+                "description": "Network monitoring"},
+    "ZoomIt": {"winget": "Microsoft.Sysinternals.ZoomIt", "category": "Microsoft Tools",
+               "description": "Screen zoom tool"},
+    "RDCMan": {"winget": "Microsoft.Sysinternals.RDCMan", "category": "Microsoft Tools",
+               "description": "Remote Desktop manager"},
+    "DISMTools": {"winget": "CodingWondersSoftware.DISMTools.Stable", "category": "Microsoft Tools",
+                  "description": "DISM GUI"},
+    "NTLite": {"winget": "Nlitesoft.NTLite", "category": "Microsoft Tools", "description": "Windows customizer"},
+
+    # ==================== PRO TOOLS ====================
+    "PuTTY": {"winget": "PuTTY.PuTTY", "category": "Pro Tools", "description": "SSH/Telnet client"},
+    "WinSCP": {"winget": "WinSCP.WinSCP", "category": "Pro Tools", "description": "SFTP/FTP client"},
+    "mRemoteNG": {"winget": "mRemoteNG.mRemoteNG", "category": "Pro Tools",
+                  "description": "Remote connections manager"},
+    "RustDesk": {"winget": "RustDesk.RustDesk", "category": "Pro Tools", "description": "Remote desktop"},
+    "Advanced IP Scanner": {"winget": "Famatech.AdvancedIPScanner", "category": "Pro Tools",
+                            "description": "Network scanner"},
+    "Angry IP Scanner": {"winget": "angryziber.AngryIPScanner", "category": "Pro Tools",
+                         "description": "Network scanner"},
+    "Nmap": {"winget": "Insecure.Nmap", "category": "Pro Tools", "description": "Network scanner"},
+    "Wireshark": {"winget": "WiresharkFoundation.Wireshark", "category": "Pro Tools",
+                  "description": "Network analyzer"},
+    "HeidiSQL": {"winget": "HeidiSQL.HeidiSQL", "category": "Pro Tools", "description": "Database client"},
+    "Simplewall": {"winget": "Henry++.simplewall", "category": "Pro Tools", "description": "Firewall"},
+    "Portmaster": {"winget": "Safing.Portmaster", "category": "Pro Tools", "description": "Application firewall"},
+    "WireGuard": {"winget": "WireGuard.WireGuard", "category": "Pro Tools", "description": "VPN protocol"},
+    "OpenVPN Connect": {"winget": "OpenVPNTechnologies.OpenVPNConnect", "category": "Pro Tools",
+                        "description": "VPN client"},
+    "Mullvad VPN": {"winget": "MullvadVPN.MullvadVPN", "category": "Pro Tools", "description": "VPN service"},
+    "NetBird": {"winget": "netbird", "category": "Pro Tools", "description": "VPN mesh network"},
+    "Ventoy": {"winget": "Ventoy.Ventoy", "category": "Pro Tools", "description": "Multi-boot USB creator"},
+    "EFI Boot Editor": {"winget": "EFIBootEditor.EFIBootEditor", "category": "Pro Tools",
+                        "description": "EFI boot manager"},
+    "XPipe": {"winget": "xpipe-io.xpipe", "category": "Pro Tools", "description": "Container orchestration"},
+
+    # ==================== DOCUMENT ====================
+    "LibreOffice": {"winget": "TheDocumentFoundation.LibreOffice", "category": "Document",
+                    "description": "Office suite"},
+    "ONLYOffice": {"winget": "ONLYOFFICE.DesktopEditors", "category": "Document", "description": "Office suite"},
+    "Notepad++": {"winget": "Notepad++.Notepad++", "category": "Document", "description": "Code editor"},
+    "Obsidian": {"winget": "Obsidian.Obsidian", "category": "Document", "description": "Knowledge base"},
+    "Joplin": {"winget": "Joplin.Joplin", "category": "Document", "description": "Note-taking app"},
+    "Logseq": {"winget": "Logseq.Logseq", "category": "Document", "description": "Outliner notes"},
+    "Simplenote": {"winget": "Automattic.Simplenote", "category": "Document", "description": "Simple notes"},
+    "massCode": {"winget": "antonreshetov.massCode", "category": "Document", "description": "Snippet manager"},
+    "Anki": {"winget": "Anki.Anki", "category": "Document", "description": "Flashcard app"},
+    "Calibre": {"winget": "calibre.calibre", "category": "Document", "description": "E-book manager"},
+    "AFFiNE": {"winget": "ToEverything.AFFiNE", "category": "Document", "description": "Notion alternative"},
+    "Adobe Acrobat Reader": {"winget": "Adobe.Acrobat.Reader.64-bit", "category": "Document",
+                             "description": "PDF reader"},
+    "Foxit PDF Reader": {"winget": "Foxit.FoxitReader", "category": "Document", "description": "PDF reader"},
+    "Foxit PDF Editor": {"winget": "Foxit.PhantomPDF", "category": "Document", "description": "PDF editor"},
+    "Sumatra PDF": {"winget": "SumatraPDF.SumatraPDF", "category": "Document", "description": "Lightweight PDF reader"},
+    "PDFgear": {"winget": "PDFgear.PDFgear", "category": "Document", "description": "PDF tool"},
+    "PDF24 Creator": {"winget": "geeksoftwareGmbH.PDF24Creator", "category": "Document", "description": "PDF tools"},
+    "PDFsam Basic": {"winget": "PDFsam.PDFsam", "category": "Document", "description": "PDF split/merge"},
+    "Okular": {"winget": "KDE.Okular", "category": "Document", "description": "Document viewer"},
+    "NAPS2": {"winget": "Cyanfish.NAPS2", "category": "Document", "description": "Document scanner"},
+    "WinMerge": {"winget": "WinMerge.WinMerge", "category": "Document", "description": "Diff/merge tool"},
+    "Zim Desktop Wiki": {"winget": "Zimwiki.Zim", "category": "Document", "description": "Desktop wiki"},
+    "Znote": {"winget": "alagrede.znote", "category": "Document", "description": "Note-taking"},
+    "Xournal++": {"winget": "Xournal++.Xournal++", "category": "Document", "description": "Handwriting notes"},
+    "Zotero": {"winget": "DigitalScholar.Zotero", "category": "Document", "description": "Research manager"},
+}
+
+
+# Helper functions for the app database
+def get_apps_by_category():
+    """Returns a dictionary of apps organized by category"""
+    categories = {}
+    for app_name, app_data in INSTALLABLE_APPS.items():
+        category = app_data["category"]
+        if category not in categories:
+            categories[category] = []
+        categories[category].append({
+            "name": app_name,
+            "winget": app_data["winget"],
+            "description": app_data["description"]
+        })
+    for category in categories:
+        categories[category].sort(key=lambda x: x["name"])
+    return categories
+
+
+def get_categories():
+    """Returns a sorted list of all categories"""
+    categories = set()
+    for app_data in INSTALLABLE_APPS.values():
+        categories.add(app_data["category"])
+    return sorted(categories)
+
+
+# Constants for hiding console windows
+CREATE_NO_WINDOW = 0x08000000
+
+# ==================== STORAGESENSE MODULE ====================
+# This module provides an advanced disk scanner UI, merged for single-EXE deployment.
+
+# --- StorageSense Styling and Constants ---
+SS_COLOR_LARGE = "#E74C3C"  # Red for very large
+SS_COLOR_MEDIUM = "#F39C12"  # Orange for medium-large
+SS_COLOR_CORE = "#3498DB"  # Blue for Windows core files
+SS_THRESHOLD_GB = 1.0
+SS_THRESHOLD_MB = 100.0
+
+# --- StorageSense File Hints Database ---
+SS_HINTS = {
+    "pagefile.sys": "Windows Virtual Memory - Crucial for system stability.",
+    "hiberfil.sys": "Hibernate Data - Saves state when sleeping.",
+    "swapfile.sys": "Universal App Swap Space - Similar to pagefile.",
+    "ntuser.dat": "User Settings Hive - Critical system registry file.",
+    "dll": "System Library - Contains code used by multiple programs.",
+    "sys": "System Driver - Hardware or software driver file.",
+    "cab": "Windows Cabinet File - Used for updates and installations.",
+    "log": "Log File - Recording of program activity. Often safe to delete.",
+    "dmp": "Crash Dump - Data from a system crash. Safe to delete.",
+    "vmdk": "Virtual Machine Drive - Contains a whole virtual computer.",
+    "vhdx": "Virtual Machine Drive - Windows native virtual disk format.",
+    "vhd": "Virtual Hard Disk - Older virtual machine drive format.",
+    "iso": "Disk Image - Often an installer or backup of a physical disk.",
+    "img": "Disk Image - Raw data from a disk or partition.",
+    "pak": "Game Data Archive - Contains models, textures, and sounds.",
+    "bundle": "Unity Data Bundle - Asset package for game engines.",
+    "obb": "Android Expansion File - Large game data for mobile ports.",
+    "unity3d": "Unity Engine Asset - 3D assets and game logic.",
+    "rpf": "Rockstar Game File - Massive game asset container (GTA/RDR).",
+    "workshop": "Steam Workshop - Downloaded mod or custom content.",
+    "mp4": "Video File - High definition video data.",
+    "mkv": "Video File - High quality video container.",
+    "mov": "QuickTime Video - Apple media format.",
+    "wav": "Uncompressed Audio - Large, high-quality sound file.",
+    "flac": "Lossless Audio - High quality sound with some compression.",
+    "tmp": "Temporary File - Usually safe to delete if not in use.",
+    "node_modules": "Javascript Dependencies - Can be massive; safe to delete if you can 'npm install'.",
+    ".git": "Version Control - Contains the history of a software project.",
+    "py": "Python Script - Source code file.",
+    "js": "Javascript File - Web or application logic.",
+    "json": "Data File - Structured information used by apps.",
+    "cpp": "C++ Source - Compiled programming code.",
+    "target": "Build Output - Often found in Rust/Java projects. Safe to clean.",
+    "msi": "Windows Installer - Can often be deleted after installation.",
+    "exe": "Executable Program - The actual application file.",
+    "zip": "Compressed Archive - Multiple files packed together.",
+    "rar": "WinRAR Archive - Third-party compression format.",
+    "7z": "7-Zip Archive - High efficiency compressed file.",
+}
+
+
+def ss_get_file_hint(path):
+    name = os.path.basename(path).lower()
+    ext = name.split(".")[-1] if "." in name else ""
+    if name in SS_HINTS: return SS_HINTS[name]
+    if ext in SS_HINTS: return SS_HINTS[ext]
+    if "program files" in path.lower(): return "Installed Application data."
+    if "users" in path.lower() and "appdata" not in path.lower(): return "User data (Documents, Downloads, etc)."
+    return ""
+
+
+def ss_format_size(size_bytes):
+    if size_bytes == 0: return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 2)
+    return "%s %s" % (s, size_name[i])
+
+
+def ss_send_to_recycle_bin(path):
+    """Move a file/folder to Recycle Bin on Windows without extra dependencies."""
+    if os.name != 'nt':
+        return False
+    try:
+        from ctypes import wintypes
+        FO_DELETE = 3
+        FOF_SILENT = 0x0004
+        FOF_NOCONFIRMATION = 0x0010
+        FOF_ALLOWUNDO = 0x0040
+        FOF_NOERRORUI = 0x0400
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [
+                ("hwnd", wintypes.HWND),
+                ("wFunc", wintypes.UINT),
+                ("pFrom", wintypes.LPCWSTR),
+                ("pTo", wintypes.LPCWSTR),
+                ("fFlags", wintypes.WORD),
+                ("fAnyOperationsAborted", wintypes.BOOL),
+                ("hNameMappings", wintypes.LPVOID),
+                ("lpszProgressTitle", wintypes.LPCWSTR),
+            ]
+
+        target = os.path.normpath(path)
+        if not os.path.exists(target):
+            return False
+        # SHFileOperation expects double-null terminated string.
+        from_buffer = target + "\0\0"
+        op = SHFILEOPSTRUCTW()
+        op.hwnd = 0
+        op.wFunc = FO_DELETE
+        op.pFrom = from_buffer
+        op.pTo = None
+        op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
+        result = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+        return result == 0 and not bool(op.fAnyOperationsAborted)
+    except Exception:
+        return False
+
+
+def ss_get_drive_health_info(path):
+    if os.name != 'nt': return {"status": "N/A", "raw": "Non-Windows"}
+    try:
+        drive_letter = os.path.splitdrive(path)[0].replace(":", "")
+        if not drive_letter: return {"status": "Unknown", "raw": "No Drive Letter"}
+        ps_cmd = (
+            f"Get-Volume -DriveLetter {drive_letter} | Get-Partition | Get-Disk | Get-PhysicalDisk | "
+            "Select-Object HealthStatus, PredictFailure, MediaType, BusType, OperationalStatus, "
+            "Size, AllocatedSize, FriendlyName, Usage, Manufacturer, Model, FirmwareRevision, SerialNumber | ConvertTo-Json"
+        )
+        process = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True,
+                                 timeout=10, creationflags=CREATE_NO_WINDOW)
+        if not process.stdout.strip(): return {"status": "Unknown", "raw": "No Output"}
+        data = json.loads(process.stdout)
+        if isinstance(data, list): data = data[0]
+        health = data.get("HealthStatus", "Unknown")
+        predict_fail = data.get("PredictFailure", False)
+        status = health
+        if predict_fail or health.upper() != "HEALTHY":
+            status = f"WARNING ({health})"
+        return {"status": status, "data": data}
+    except Exception as e:
+        return {"status": "Unknown", "raw": str(e)}
+
+
+def ss_get_drive_details(path, serial=None):
+    """Get comprehensive drive reliability and performance stats."""
+    if os.name != 'nt': return {}
+    details = {}
+    try:
+        drive_letter = os.path.splitdrive(path)[0].replace(":", "")
+
+        # Method 1: Get StorageReliabilityCounter (most detailed)
+        ps_cmd = (
+            f"Get-Volume -DriveLetter {drive_letter} | Get-Partition | Get-Disk | Get-PhysicalDisk | "
+            "Get-StorageReliabilityCounter | Select-Object PowerOnHours, Temperature, ReadErrorsTotal, WriteErrorsTotal, "
+            "ReadErrorsCorrected, ReadErrorsUncorrected, WriteErrorsCorrected, WriteErrorsUncorrected, "
+            "Wearout, LoadUnloadCycleCount, StartStopCycleCount, RealizedCapacity, FlushErrorsTotal, FatalErrorsTotal, "
+            "ReadLatencyMax, WriteLatencyMax, ReadIOPS, WriteIOPS | ConvertTo-Json"
+        )
+        process = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True,
+                                 timeout=15, creationflags=CREATE_NO_WINDOW)
+        if process.returncode == 0 and process.stdout.strip():
+            details = json.loads(process.stdout)
+            if isinstance(details, list): details = details[0]
+
+        # Method 2: Get additional physical disk info (manufacturer, speed, etc.)
+        ps_phys = (
+            f"Get-Volume -DriveLetter {drive_letter} | Get-Partition | Get-Disk | Get-PhysicalDisk | "
+            "Select-Object Manufacturer, Model, FirmwareRevision, SerialNumber, MediaType, BusType, "
+            "SpindleSpeed, Size, AllocatedSize, LogicalSectorSize, PhysicalSectorSize | ConvertTo-Json"
+        )
+        phys_proc = subprocess.run(["powershell", "-Command", ps_phys], capture_output=True, text=True,
+                                   timeout=10, creationflags=CREATE_NO_WINDOW)
+        if phys_proc.returncode == 0 and phys_proc.stdout.strip():
+            phys_data = json.loads(phys_proc.stdout)
+            if isinstance(phys_data, list): phys_data = phys_data[0]
+            details.update(phys_data)
+
+        # Method 3: Get disk performance counters
+        ps_perf = (
+            f"Get-Counter '\\PhysicalDisk(*)\\Disk Reads/sec', '\\PhysicalDisk(*)\\Disk Writes/sec', "
+            f"'\\PhysicalDisk(*)\\Avg. Disk sec/Read', '\\PhysicalDisk(*)\\Avg. Disk sec/Write' -ErrorAction SilentlyContinue | "
+            "Select-Object -ExpandProperty CounterSamples | Where-Object {{$_.InstanceName -like '*{drive_letter}*'}} | "
+            "Select-Object Path, CookedValue | ConvertTo-Json"
+        )
+        try:
+            perf_proc = subprocess.run(["powershell", "-Command", ps_perf], capture_output=True, text=True,
+                                       timeout=5, creationflags=CREATE_NO_WINDOW)
+            if perf_proc.returncode == 0 and perf_proc.stdout.strip():
+                perf_data = json.loads(perf_proc.stdout)
+                if isinstance(perf_data, dict): perf_data = [perf_data]
+                for counter in perf_data:
+                    path_name = counter.get("Path", "")
+                    value = counter.get("CookedValue", 0)
+                    if "Reads/sec" in path_name:
+                        details["CurrentReadIOPS"] = round(value, 2)
+                    elif "Writes/sec" in path_name:
+                        details["CurrentWriteIOPS"] = round(value, 2)
+                    elif "sec/Read" in path_name:
+                        details["AvgReadLatencyMs"] = round(value * 1000, 2)
+                    elif "sec/Write" in path_name:
+                        details["AvgWriteLatencyMs"] = round(value * 1000, 2)
+        except Exception:
+            pass
+
+        return details
+    except Exception:
+        return {}
+
+
+class SSScanner:
+    def __init__(self, root_path, min_size_mb, update_callback, q):
+        self.root_path = os.path.normpath(root_path)
+        self.min_size_bytes = min_size_mb * 1024 * 1024
+        self.update_callback = update_callback
+        self.is_running = True
+        self.queue = q
+        self.total_size = 0
+        self.total_files = 0
+        self.total_folders = 0
+        self.total_errors = 0
+        self.entries_scanned = 0
+        self.scanned_bytes = 0
+        self.top_level_total = 0
+        self.top_level_done = 0
+        self.top_level_ema_sec = None
+        self.excluded_dirs = {'System Volume Information', '$Recycle.Bin', 'Containers'}
+
+    def stop(self):
+        self.is_running = False
+
+    def scan(self):
+        start_time = time.time()
+        try:
+            with os.scandir(self.root_path) as it:
+                self.top_level_total = sum(
+                    1 for entry in it
+                    if not entry.is_symlink()
+                    and entry.name.lower() not in [ex.lower() for ex in self.excluded_dirs]
+                )
+        except Exception:
+            self.top_level_total = 0
+
+        size, files, folders = self._scan_and_sum(self.root_path, is_root=True)
+        self.total_size = size
+        duration = time.time() - start_time
+        self.update_callback(self.root_path, {
+            "size": size, "is_dir": True, "files": files, "folders": folders,
+            "mtime": os.path.getmtime(self.root_path) if os.path.exists(self.root_path) else 0,
+            "complete": True, "duration": duration
+        })
+
+    def _scan_and_sum(self, path, is_root=False):
+        if not self.is_running: return 0, 0, 0
+        if self.queue.qsize() > 1500: time.sleep(0.05)
+        base_name = os.path.basename(path).lower()
+        if base_name in [ex.lower() for ex in self.excluded_dirs]: return 0, 0, 0
+        dir_size, dir_files, dir_folders = 0, 0, 0
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if not self.is_running: return 0, 0, 0
+                    self.entries_scanned += 1
+                    if entry.is_symlink(): continue
+                    entry_started = time.time()
+                    try:
+                        if entry.is_file(follow_symlinks=False):
+                            est = entry.stat(follow_symlinks=False)
+                            size = est.st_size
+                            dir_size += size
+                            dir_files += 1
+                            self.total_files += 1
+                            self.scanned_bytes += size
+                            if size >= self.min_size_bytes:
+                                self.update_callback(entry.path,
+                                                     {"size": size, "is_dir": False, "files": 0, "folders": 0,
+                                                      "mtime": est.st_mtime})
+                        elif entry.is_dir(follow_symlinks=False):
+                            self.total_folders += 1
+                            dstat = entry.stat(follow_symlinks=False)
+                            s_size, s_files, s_folders = self._scan_and_sum(entry.path)
+                            dir_size += s_size
+                            dir_files += s_files
+                            dir_folders += (1 + s_folders)
+                            self.update_callback(entry.path, {"size": s_size, "is_dir": True, "files": s_files,
+                                                              "folders": 1 + s_folders,
+                                                              "mtime": dstat.st_mtime})
+                    except (OSError, PermissionError):
+                        self.total_errors += 1
+                    finally:
+                        if is_root:
+                            self.top_level_done += 1
+                            elapsed = max(time.time() - entry_started, 0.001)
+                            if self.top_level_ema_sec is None:
+                                self.top_level_ema_sec = elapsed
+                            else:
+                                # Exponential moving average for steadier ETA.
+                                self.top_level_ema_sec = (self.top_level_ema_sec * 0.75) + (elapsed * 0.25)
+            if self.entries_scanned % 1000 == 0: time.sleep(0.01)
+        except (OSError, PermissionError):
+            self.total_errors += 1
+        return dir_size, dir_files, dir_folders
+
+
+class SSHealthDetailsWindow(ctk.CTkToplevel):
+    def __init__(self, parent, health_info, details):
+        super().__init__(parent)
+        self.title("Drive Health Details")
+        self.geometry("550x700")
+        self.attributes("-topmost", True)
+        frame = ctk.CTkFrame(self)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+        ctk.CTkLabel(frame, text="Detailed Drive Information", font=ctk.CTkFont(size=18, weight="bold")).pack(
+            pady=(0, 20))
+        scroll = ctk.CTkScrollableFrame(frame, width=490, height=550)
+        scroll.pack(fill="both", expand=True)
+
+        def add_stat(label, value, val_color=None):
+            row = ctk.CTkFrame(scroll, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=f"{label}:", font=ctk.CTkFont(weight="bold"), width=180, anchor="w").pack(
+                side="left")
+            val_lbl = ctk.CTkLabel(row, text=str(value), anchor="w")
+            if val_color: val_lbl.configure(text_color=val_color)
+            val_lbl.pack(side="left", fill="x", expand=True)
+
+        def add_section(title):
+            ctk.CTkLabel(scroll, text=title, font=ctk.CTkFont(size=14, weight="bold", underline=True)).pack(anchor="w",
+                                                                                                            pady=(15,
+                                                                                                                  5))
+
+        data = health_info.get("data", {})
+
+        # Hardware Info
+        add_section("Hardware")
+        add_stat("Manufacturer", details.get("Manufacturer") or data.get("Manufacturer", "N/A"))
+        add_stat("Model", details.get("Model") or data.get("Model", "N/A"))
+        add_stat("Serial Number", details.get("SerialNumber") or data.get("SerialNumber", "N/A"))
+        add_stat("Firmware", details.get("FirmwareRevision") or data.get("FirmwareRevision", "N/A"))
+        add_stat("Bus Type", details.get("BusType") or data.get("BusType", "N/A"))
+        add_stat("Media Type", details.get("MediaType") or data.get("MediaType", "N/A"))
+        if details.get("SpindleSpeed"): add_stat("Spindle Speed", f"{details.get('SpindleSpeed')} RPM")
+        if details.get("Size"): add_stat("Total Capacity", ss_format_size(int(details.get("Size", 0))))
+        if details.get("LogicalSectorSize"): add_stat("Sector Size", f"{details.get('LogicalSectorSize')} bytes")
+
+        # Health & Reliability
+        add_section("Health & Reliability")
+        add_stat("Health Status", data.get("HealthStatus", "Unknown"),
+                 "#2ECC71" if data.get("HealthStatus", "").upper() == "HEALTHY" else "#E74C3C")
+        add_stat("Operational Status", data.get("OperationalStatus", "N/A"))
+        poh = details.get("PowerOnHours")
+        if poh:
+            days = int(poh) // 24
+            add_stat("Power On Hours", f"{poh} hours ({days} days)")
+        else:
+            add_stat("Power On Hours", "N/A")
+        temp = details.get("Temperature")
+        if temp:
+            temp_color = "#2ECC71" if int(temp) < 50 else "#F39C12" if int(temp) < 60 else "#E74C3C"
+            add_stat("Temperature", f"{temp} Â°C", temp_color)
+        else:
+            add_stat("Temperature", "N/A")
+        add_stat("Power Cycles", details.get("StartStopCycleCount") or details.get("LoadUnloadCycleCount", "N/A"))
+        wearout = details.get("Wearout")
+        if wearout is not None:
+            wear_color = "#2ECC71" if int(wearout) < 50 else "#F39C12" if int(wearout) < 80 else "#E74C3C"
+            add_stat("Wearout Level", f"{wearout}%", wear_color)
+
+        # Error Statistics
+        add_section("Error Statistics")
+        read_err = details.get("ReadErrorsTotal", 0) or 0
+        write_err = details.get("WriteErrorsTotal", 0) or 0
+        add_stat("Read Errors (Total)", read_err, "#E74C3C" if int(read_err) > 0 else None)
+        add_stat("Write Errors (Total)", write_err, "#E74C3C" if int(write_err) > 0 else None)
+        if details.get("ReadErrorsCorrected"): add_stat("Read Errors (Corrected)", details.get("ReadErrorsCorrected"))
+        if details.get("WriteErrorsCorrected"): add_stat("Write Errors (Corrected)",
+                                                         details.get("WriteErrorsCorrected"))
+        if details.get("FlushErrorsTotal"): add_stat("Flush Errors", details.get("FlushErrorsTotal"))
+        fatal = details.get("FatalErrorsTotal", 0) or 0
+        add_stat("Fatal Errors", fatal, "#E74C3C" if int(fatal) > 0 else "#2ECC71")
+
+        # Performance (if available)
+        if any(details.get(k) for k in ["CurrentReadIOPS", "CurrentWriteIOPS", "ReadLatencyMax", "WriteLatencyMax"]):
+            add_section("Performance")
+            if details.get("CurrentReadIOPS"): add_stat("Current Read IOPS", details.get("CurrentReadIOPS"))
+            if details.get("CurrentWriteIOPS"): add_stat("Current Write IOPS", details.get("CurrentWriteIOPS"))
+            if details.get("AvgReadLatencyMs"): add_stat("Avg Read Latency", f"{details.get('AvgReadLatencyMs')} ms")
+            if details.get("AvgWriteLatencyMs"): add_stat("Avg Write Latency", f"{details.get('AvgWriteLatencyMs')} ms")
+            if details.get("ReadLatencyMax"): add_stat("Max Read Latency", f"{details.get('ReadLatencyMax')} Î¼s")
+            if details.get("WriteLatencyMax"): add_stat("Max Write Latency", f"{details.get('WriteLatencyMax')} Î¼s")
+
+        ctk.CTkButton(frame, text="Close", command=self.destroy).pack(pady=(10, 0))
+
+
+class StorageSenseApp(ctk.CTkToplevel):
+    """StorageSense Disk Analyzer - Opens as a child window of the main app."""
+
+    def __init__(self, parent, theme=None):
+        super().__init__(parent)
+        self.theme = theme or HOLOGRAPHIC_THEME
+        self.ui_bg = self.theme.get('bg', '#030611')
+        self.ui_surface = self.theme.get('surface', '#121F38')
+        self.ui_glass = self.theme.get('glass_tint', '#162742')
+        self.ui_glass_alt = self.theme.get('glass_tint_alt', '#1C3256')
+        self.ui_fg = self.theme.get('fg', '#EAF6FF')
+        self.ui_primary = self.theme.get('primary', '#7FE4FF')
+        self.ui_border = self.theme.get('task_border', '#8CA4CC')
+        self.ui_menu_bg = self.theme.get('menu_bg', '#101C33')
+        self.ui_menu_fg = self.theme.get('menu_fg', '#E7F4FF')
+
+        self.title("WinMend Storage Analyzer - Professional Disk Analyzer")
+        self.geometry("1500x850")
+        self.configure(fg_color=self.ui_bg)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        # Main Paned Window (Split View)
+        self.paned = tk.PanedWindow(self, orient="horizontal", bd=0, bg=self.ui_bg, sashwidth=4)
+        self.paned.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        # Left: Directory Tree Frame
+        self.left_frame = ctk.CTkFrame(self.paned, corner_radius=0, fg_color=self.ui_glass)
+        self.paned.add(self.left_frame, width=350)
+        self.left_frame.grid_rowconfigure(1, weight=1)
+        self.left_frame.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.left_frame, text="Directory Tree", text_color=self.ui_primary, font=ctk.CTkFont(size=16, weight="bold")
+        ).grid(row=0, column=0, pady=5, padx=10, sticky="w")
+        # Right: Details Table Frame
+        self.right_frame = ctk.CTkFrame(self.paned, corner_radius=0, fg_color=self.ui_glass)
+        self.paned.add(self.right_frame)
+        self.right_frame.grid_rowconfigure(1, weight=1)
+        self.right_frame.grid_rowconfigure(2, weight=0)
+        self.right_frame.grid_columnconfigure(0, weight=1)
+        # Toolbar
+        self.toolbar = ctk.CTkFrame(self.right_frame, height=40, corner_radius=0, fg_color="transparent")
+        self.toolbar.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
+        self.select_button = ctk.CTkButton(self.toolbar, text="Select Drive", command=self.select_folder,
+                                           text_color=self.theme.get('button_fg', '#FFFFFF'),
+                                           fg_color=self.theme.get('button_bg', '#204F9A'),
+                                           hover_color=self.theme.get('select_bg', '#2B4D7C'),
+                                           font=ctk.CTkFont(weight="bold"), width=110)
+        self.select_button.pack(side="left", padx=5)
+        self.scan_button = ctk.CTkButton(self.toolbar, text="Start Scan", command=self.start_scan, fg_color="#2ECC71",
+                                         hover_color="#27AE60", text_color="#03130A", font=ctk.CTkFont(weight="bold"),
+                                         width=100)
+        self.scan_button.pack(side="left", padx=5)
+        self.stop_button = ctk.CTkButton(self.toolbar, text="Stop", command=self.stop_scan, fg_color="#E74C3C",
+                                         hover_color="#C0392B", text_color="#FFFFFF", font=ctk.CTkFont(weight="bold"),
+                                         state="disabled", width=80)
+        self.stop_button.pack(side="left", padx=5)
+        self.scope_filter_var = tk.StringVar(value="All")
+        self.scope_filter = ctk.CTkOptionMenu(self.toolbar, values=["All", "Current User", "System"],
+                                              variable=self.scope_filter_var, width=130)
+        self.scope_filter.pack(side="right", padx=5)
+        ctk.CTkLabel(self.toolbar, text="Scope:", text_color=self.ui_fg).pack(side="right", padx=(10, 2))
+
+        self.include_system_var = tk.BooleanVar(value=False)
+        self.include_system_switch = ctk.CTkSwitch(
+            self.toolbar, text="Include Core/System", variable=self.include_system_var,
+            onvalue=True, offvalue=False, width=160
+        )
+        self.include_system_switch.pack(side="right", padx=5)
+
+        self.age_entry = ctk.CTkEntry(self.toolbar, width=70, placeholder_text="90")
+        self.age_entry.pack(side="right", padx=5)
+        ctk.CTkLabel(self.toolbar, text="Older Than (days):", text_color=self.ui_fg).pack(side="right", padx=5)
+
+        self.ext_entry = ctk.CTkEntry(self.toolbar, width=140, placeholder_text="zip,iso,log,tmp")
+        self.ext_entry.pack(side="right", padx=5)
+        ctk.CTkLabel(self.toolbar, text="Ext Filter:", text_color=self.ui_fg).pack(side="right", padx=5)
+
+        self.size_entry = ctk.CTkEntry(self.toolbar, width=60)
+        self.size_entry.insert(0, "100")
+        self.size_entry.pack(side="right", padx=5)
+        ctk.CTkLabel(self.toolbar, text="Min (MB):", text_color=self.ui_fg).pack(side="right", padx=5)
+        self.apply_filters_button = ctk.CTkButton(self.toolbar, text="Apply Filters", width=100,
+                                                  command=self.apply_filters_to_view)
+        self.apply_filters_button.pack(side="right", padx=5)
+        # Insights panel
+        self.insights_frame = ctk.CTkFrame(self.right_frame, corner_radius=8, fg_color=self.ui_glass_alt)
+        self.insights_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 8))
+        self.insights_frame.grid_columnconfigure(0, weight=1)
+        self.insights_header = ctk.CTkFrame(self.insights_frame, fg_color="transparent")
+        self.insights_header.grid(row=0, column=0, sticky="ew", padx=8, pady=(6, 2))
+        ctk.CTkLabel(self.insights_header, text="Top Space Hogs + Quick Wins", text_color=self.ui_primary,
+                     font=ctk.CTkFont(size=13, weight="bold")).pack(side="left")
+        self.refresh_insights_btn = ctk.CTkButton(
+            self.insights_header, text="Refresh Insights", width=120, command=self.refresh_insights
+        )
+        self.refresh_insights_btn.pack(side="right")
+        self.insights_actions = ctk.CTkFrame(self.insights_frame, fg_color="transparent")
+        self.insights_actions.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 2))
+        self.open_temp_locations_btn = ctk.CTkButton(
+            self.insights_actions, text="Open Temp/Cache/Logs", width=170,
+            command=lambda: self.open_insight_locations("temp_like")
+        )
+        self.open_temp_locations_btn.pack(side="left", padx=(0, 6))
+        self.open_installers_btn = ctk.CTkButton(
+            self.insights_actions, text="Open Installer/Archive Folders", width=200,
+            command=lambda: self.open_insight_locations("installers")
+        )
+        self.open_installers_btn.pack(side="left", padx=6)
+        self.open_downloads_btn = ctk.CTkButton(
+            self.insights_actions, text="Open Old Downloads", width=150,
+            command=lambda: self.open_insight_locations("old_downloads")
+        )
+        self.open_downloads_btn.pack(side="left", padx=6)
+        self.open_services_btn = ctk.CTkButton(
+            self.insights_actions, text="Open Services", width=110, command=self.open_services_console
+        )
+        self.open_services_btn.pack(side="left", padx=6)
+        self.clean_top_hogs_btn = ctk.CTkButton(
+            self.insights_actions, text="Clean Top Hogs", width=130, fg_color="#E67E22", hover_color="#CA6F1E",
+            command=self.clean_top_hogs_from_insights
+        )
+        self.clean_top_hogs_btn.pack(side="right", padx=(6, 0))
+        self.insights_text = ctk.CTkTextbox(self.insights_frame, height=125, wrap="word")
+        self.insights_text.grid(row=2, column=0, sticky="ew", padx=8, pady=(2, 8))
+        self.insights_text.insert("1.0", "Scan a drive to generate intelligent cleanup recommendations.")
+        self.insights_text.configure(state="disabled")
+        # Bottom Frame (Stats)
+        self.bottom_frame = ctk.CTkFrame(self, height=40, corner_radius=0, fg_color=self.ui_surface)
+        self.bottom_frame.grid(row=1, column=0, sticky="ew")
+        self.drive_summary_label = ctk.CTkLabel(self.bottom_frame, text="Drive: -- | Total: -- | Free: --",
+                                                text_color=self.ui_fg, font=ctk.CTkFont(size=12, weight="bold"))
+        self.drive_summary_label.pack(side="left", padx=20)
+        self.health_btn = ctk.CTkButton(self.bottom_frame, text="Drive Health: --",
+                                        font=ctk.CTkFont(size=12, weight="bold"), fg_color="transparent",
+                                        hover_color=self.theme.get('surface_alt', '#1D2F52'),
+                                        text_color="#2ECC71", command=self.show_health_details,
+                                        width=120)
+        self.health_btn.pack(side="left", padx=20)
+        self.current_health_info = {}
+        self.current_health_details = {}
+        self.stats_label = ctk.CTkLabel(self.bottom_frame, text="Ready", text_color=self.ui_fg, font=ctk.CTkFont(size=12))
+        self.stats_label.pack(side="left", expand=True)
+        self.global_stats_label = ctk.CTkLabel(self.bottom_frame, text="Files: 0 | Folders: 0 | Errors: 0", text_color=self.ui_fg,
+                                               font=ctk.CTkFont(size=12))
+        self.global_stats_label.pack(side="right", padx=20)
+        # Trees
+        self.setup_trees()
+        self.scanner = None
+        self.selected_path = "C:\\" if os.name == 'nt' else "/"
+        self.tree_map_left = {}
+        self.tree_map_right = {}
+        self.update_queue = queue.Queue()
+        self.dirty_nodes = set()
+        self.last_status_update = 0
+        self.last_insight_update = 0
+        self.scan_started_at = 0
+        self.current_scan_item = ""
+        self.scan_cache = {}
+        self.user_profile_path = os.path.normpath(os.path.expanduser("~")).lower()
+        self.insight_top_hogs = []
+        self.insight_temp_like = []
+        self.insight_installers = []
+        self.insight_old_downloads = []
+        self.insight_windows_db = []
+        self.is_scanning = False
+        self._bind_mousewheel_handlers()
+        self.after(100, self.process_buffered_updates)
+
+    def setup_trees(self):
+        style = ttk.Style()
+        style.theme_use("default")
+        tree_bg = self.ui_glass
+        tree_fg = self.ui_fg
+        heading_bg = self.ui_surface
+        heading_fg = self.ui_primary
+        selected_bg = self.theme.get('select_bg', '#2B4D7C')
+        style.configure(
+            "Storage.Treeview",
+            background=tree_bg,
+            foreground=tree_fg,
+            fieldbackground=tree_bg,
+            rowheight=28,
+            borderwidth=0
+        )
+        style.map("Storage.Treeview", background=[('selected', selected_bg)], foreground=[('selected', tree_fg)])
+        style.configure(
+            "Storage.Treeview.Heading",
+            background=heading_bg,
+            foreground=heading_fg,
+            borderwidth=0,
+            font=("Bahnschrift SemiBold", 10, "bold")
+        )
+        self.tree_left = ttk.Treeview(self.left_frame, columns=("Size", "RawSize"), selectmode="browse")
+        self.tree_left.configure(style="Storage.Treeview")
+        self.tree_left.heading("#0", text="Folder", anchor="w")
+        self.tree_left.heading("Size", text="Size", anchor="w")
+        self.tree_left.column("#0", width=220)
+        self.tree_left.column("Size", width=80)
+        self.tree_left.column("RawSize", width=0, stretch=False)
+        self.tree_left["displaycolumns"] = ("Size")
+        self.tree_left.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.tree_left.bind("<<TreeviewSelect>>", self.on_left_tree_select)
+        cols = ("Size", "Allocated", "Files", "Folders", "%", "Modified", "Hint", "Path", "RawSize")
+        self.tree_right = ttk.Treeview(self.right_frame, columns=cols, selectmode="extended")
+        self.tree_right.configure(style="Storage.Treeview")
+        self.tree_right.heading("#0", text="Name", anchor="w")
+        icon_map = {
+            "Size": "Size",
+            "Allocated": "Allocated",
+            "Files": "Files",
+            "Folders": "Folders",
+            "%": "% of Parent",
+            "Modified": "Modified",
+            "Hint": "Hint",
+            "Path": "Path",
+            "RawSize": "RawSize",
+        }
+        for col in cols:
+            self.tree_right.heading(col, text=icon_map.get(col, col), anchor="w")
+        self.tree_right.column("#0", width=200)
+        self.tree_right.column("Size", width=90)
+        self.tree_right.column("Allocated", width=90)
+        self.tree_right.column("Files", width=70, anchor="center")
+        self.tree_right.column("Folders", width=70, anchor="center")
+        self.tree_right.column("%", width=60, anchor="center")
+        self.tree_right.column("Modified", width=130)
+        self.tree_right.column("Hint", width=150)
+        self.tree_right.column("Path", width=0, stretch=False)
+        self.tree_right.column("RawSize", width=0, stretch=False)
+        self.tree_right["displaycolumns"] = ("Size", "Allocated", "Files", "Folders", "%", "Modified", "Hint")
+        self.tree_right.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        sb_left = ctk.CTkScrollbar(self.left_frame, command=self.tree_left.yview)
+        sb_left.grid(row=1, column=1, sticky="ns")
+        self.tree_left.configure(yscrollcommand=sb_left.set)
+        sb_right = ctk.CTkScrollbar(self.right_frame, command=self.tree_right.yview)
+        sb_right.grid(row=1, column=1, sticky="ns")
+        self.tree_right.configure(yscrollcommand=sb_right.set)
+        for tree in [self.tree_left, self.tree_right]:
+            tree.tag_configure("large", foreground=SS_COLOR_LARGE, font=ctk.CTkFont(weight="bold"))
+            tree.tag_configure("medium", foreground=SS_COLOR_MEDIUM, font=ctk.CTkFont(weight="bold"))
+            tree.tag_configure("core", foreground=SS_COLOR_CORE, font=ctk.CTkFont(weight="bold"))
+        self.context_menu = tk.Menu(self, tearoff=0, background=self.ui_menu_bg, foreground=self.ui_menu_fg,
+                                    activebackground=self.theme.get('select_bg', '#2B4D7C'),
+                                    activeforeground=self.ui_fg)
+        self.context_menu.add_command(label="Open in Explorer", command=self.open_selected)
+        self.context_menu.add_command(label="Move to Recycle Bin", command=self.delete_selected)
+        self.context_menu.add_command(label="Delete Permanently", command=self.delete_selected_permanent)
+        self.tree_right.bind("<Button-3>", self.show_context_menu)
+        # Bind tree expand/collapse to sync both trees
+        self.tree_left.bind("<<TreeviewOpen>>", self.on_left_tree_toggle)
+        self.tree_left.bind("<<TreeviewClose>>", self.on_left_tree_toggle)
+        self.tree_right.bind("<<TreeviewOpen>>", self.on_right_tree_toggle)
+        self.tree_right.bind("<<TreeviewClose>>", self.on_right_tree_toggle)
+
+    def _bind_mousewheel_handlers(self):
+        self.tree_left.bind("<MouseWheel>", lambda e: self._on_tree_mousewheel(e, self.tree_left))
+        self.tree_right.bind("<MouseWheel>", lambda e: self._on_tree_mousewheel(e, self.tree_right))
+        self.insights_text.bind("<MouseWheel>", lambda e: self._on_text_mousewheel(e, self.insights_text))
+
+    def _on_tree_mousewheel(self, event, tree):
+        try:
+            tree.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except Exception:
+            pass
+        return "break"
+
+    def _on_text_mousewheel(self, event, widget):
+        try:
+            widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except Exception:
+            pass
+        return "break"
+
+    def show_context_menu(self, event):
+        item = self.tree_right.identify_row(event.y)
+        if item:
+            self.tree_right.selection_set(item)
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def on_left_tree_select(self, event):
+        selected_left = self.tree_left.selection()
+        if not selected_left: return
+        path = next((p for p, lid in self.tree_map_left.items() if lid == selected_left[0]), None)
+        if not path: return
+        if path in self.tree_map_right:
+            rid = self.tree_map_right[path]
+            self.tree_right.selection_set(rid)
+            self.tree_right.see(rid)
+            self.tree_right.focus(rid)
+            self.tree_right.item(rid, open=True)
+
+    def on_left_tree_toggle(self, event):
+        """Sync expand/collapse from left tree to right tree."""
+        selected_left = self.tree_left.focus()
+        if not selected_left: return
+        path = next((p for p, lid in self.tree_map_left.items() if lid == selected_left), None)
+        if path and path in self.tree_map_right:
+            rid = self.tree_map_right[path]
+            is_open = self.tree_left.item(selected_left, "open")
+            self.tree_right.item(rid, open=is_open)
+
+    def on_right_tree_toggle(self, event):
+        """Sync expand/collapse from right tree to left tree."""
+        selected_right = self.tree_right.focus()
+        if not selected_right: return
+        try:
+            item = self.tree_right.item(selected_right)
+            path = item['values'][7] if len(item['values']) > 7 else None
+            if path and path in self.tree_map_left:
+                lid = self.tree_map_left[path]
+                is_open = self.tree_right.item(selected_right, "open")
+                self.tree_left.item(lid, open=is_open)
+        except:
+            pass
+
+    def select_folder(self):
+        from tkinter import filedialog
+        folder = filedialog.askdirectory()
+        if folder:
+            self.selected_path = os.path.normpath(folder)
+            self.stats_label.configure(text=f"Selected: {self.selected_path}")
+
+    def _is_system_path(self, path):
+        lpath = os.path.normpath(path).lower()
+        if any(core in lpath for core in [r"\windows", r"\program files", r"\programdata"]):
+            return True
+        base = os.path.basename(lpath)
+        return base in {"pagefile.sys", "hiberfil.sys", "swapfile.sys"}
+
+    def _is_critical_system_path(self, path):
+        """Files/paths that should never be shown in Top Hogs or deleted by cleanup actions."""
+        lpath = os.path.normpath(path).lower()
+        critical_exact = {
+            "c:\\pagefile.sys",
+            "c:\\hiberfil.sys",
+            "c:\\swapfile.sys",
+            "c:\\bootmgr",
+        }
+        if lpath in critical_exact:
+            return True
+        critical_prefixes = [
+            "c:\\windows\\",
+            "c:\\program files\\",
+            "c:\\program files (x86)\\",
+            "c:\\programdata\\microsoft\\",
+        ]
+        return any(lpath.startswith(prefix) for prefix in critical_prefixes)
+
+    def _is_protected_cleanup_path(self, path):
+        return self._is_critical_system_path(path)
+
+    def _is_windows_search_db(self, path):
+        return os.path.normpath(path).lower() == r"c:\programdata\microsoft\search\data\applications\windows\windows.db"
+
+    def _is_excluded_from_top_hogs(self, path):
+        """Hide noisy/system/private files from Insights Top Hogs list."""
+        lpath = os.path.normpath(path).lower()
+        if self._is_critical_system_path(lpath):
+            return True
+        if lpath.endswith(".ost"):
+            return True
+        return False
+
+    def _passes_filters(self, path, is_dir, mtime_raw):
+        lpath = os.path.normpath(path).lower()
+
+        if not self.include_system_var.get() and self._is_system_path(path):
+            return False
+
+        scope = self.scope_filter_var.get().strip().lower()
+        if scope == "current user" and not lpath.startswith(self.user_profile_path):
+            return False
+        if scope == "system" and not self._is_system_path(path):
+            return False
+
+        if not is_dir:
+            ext_raw = (self.ext_entry.get() or "").strip().lower()
+            if ext_raw:
+                allowed_exts = {e.strip().lstrip(".") for e in ext_raw.split(",") if e.strip()}
+                if allowed_exts:
+                    file_ext = os.path.splitext(lpath)[1].lstrip(".")
+                    if file_ext not in allowed_exts:
+                        return False
+
+            age_raw = (self.age_entry.get() or "").strip()
+            if age_raw.isdigit() and int(age_raw) > 0 and mtime_raw:
+                min_age_days = int(age_raw)
+                age_days = (time.time() - mtime_raw) / 86400
+                if age_days < min_age_days:
+                    return False
+
+        return True
+
+    def _format_eta(self, seconds):
+        if seconds is None or seconds < 0:
+            return "--"
+        total = int(seconds)
+        h = total // 3600
+        m = (total % 3600) // 60
+        s = total % 60
+        if h > 0:
+            return f"{h}h {m}m {s}s"
+        if m > 0:
+            return f"{m}m {s}s"
+        return f"{s}s"
+
+    def stop_scan(self):
+        if self.scanner:
+            self.scanner.stop()
+            self.is_scanning = False
+            self.stats_label.configure(text="Scan stopped.")
+            self.stop_button.configure(state="disabled")
+            self.scan_button.configure(state="normal")
+            self.refresh_insights()
+
+    def start_scan(self):
+        if not self.selected_path:
+            messagebox.showwarning("Warning", "Please select a folder first!")
+            return
+        try:
+            min_size = int(self.size_entry.get())
+        except ValueError:
+            messagebox.showerror("Error", "Invalid size. Please enter a number.")
+            return
+        self.is_scanning = True
+        self.scan_started_at = time.time()
+        self.current_scan_item = ""
+        self.scan_cache = {}
+        self.scan_button.configure(state="disabled")
+        self.stop_button.configure(state="normal")
+        self.stats_label.configure(text="Scanning...")
+        for tree in [self.tree_left, self.tree_right]:
+            for item in tree.get_children():
+                tree.delete(item)
+        self.tree_map_left = {}
+        self.tree_map_right = {}
+        root_name = os.path.basename(self.selected_path) or self.selected_path
+        rid_left = self.tree_left.insert("", "end", text=root_name, values=("..."), open=True)
+        rid_right = self.tree_right.insert("", "end", text=root_name,
+                                           values=("...", "...", "0", "0", "100%", "...", "", self.selected_path, 0),
+                                           open=True)
+        self.tree_map_left[self.selected_path] = rid_left
+        self.tree_map_right[self.selected_path] = rid_right
+        self.scan_cache[self.selected_path] = {"size": 0, "is_dir": True, "mtime": 0, "hint": "", "files": 0, "folders": 0}
+        self.update_drive_info()
+        self.scanner = SSScanner(self.selected_path, min_size, self.queue_ui_update, self.update_queue)
+        threading.Thread(target=self.scanner.scan, daemon=True).start()
+
+    def update_drive_info(self):
+        try:
+            usage = shutil.disk_usage(self.selected_path)
+            total_str = ss_format_size(usage.total)
+            free_str = ss_format_size(usage.free)
+            drive_name = os.path.splitdrive(self.selected_path)[0] or self.selected_path
+            self.drive_summary_label.configure(text=f"Drive: {drive_name} | Total: {total_str} | Free: {free_str}")
+            self.health_btn.configure(text="Drive Health: Checking...", text_color="#F39C12")
+
+            def run_health_check():
+                try:
+                    path = self.selected_path
+                    info = ss_get_drive_health_info(path)
+                    serial = info.get("data", {}).get("SerialNumber")
+                    details = ss_get_drive_details(path, serial)
+                    self.after(0, lambda: self._finalize_health_update(info, details))
+                except:
+                    self.after(0, lambda: self.health_btn.configure(text="Drive Health: Error", text_color="#E74C3C"))
+
+            threading.Thread(target=run_health_check, daemon=True).start()
+        except:
+            self.drive_summary_label.configure(text="Drive Info: Error")
+
+    def _finalize_health_update(self, info, details):
+        self.current_health_info = info
+        self.current_health_details = details
+        status_text = f"Drive Health: {info.get('status', 'Unknown')}"
+        self.health_btn.configure(text=status_text)
+        if "WARNING" in info.get('status', '').upper():
+            self.health_btn.configure(text_color="#E74C3C")
+        elif "UNKNOWN" in info.get('status', '').upper():
+            self.health_btn.configure(text_color="#F39C12")
+        else:
+            self.health_btn.configure(text_color="#2ECC71")
+
+    def show_health_details(self):
+        if not self.current_health_info:
+            messagebox.showinfo("Wait", "Health info not loaded yet.")
+            return
+        SSHealthDetailsWindow(self, self.current_health_info, self.current_health_details)
+
+    def queue_ui_update(self, path, metadata):
+        self.update_queue.put((path, metadata))
+
+    def process_buffered_updates(self):
+        batch_limit = 150
+        count = 0
+        while count < batch_limit:
+            try:
+                path, metadata = self.update_queue.get_nowait()
+                if metadata.get("complete"):
+                    duration = metadata.get("duration", 0)
+                    self.is_scanning = False
+                    self.stats_label.configure(text=f"Scan Finished in {round(duration, 1)}s")
+                    self.scan_button.configure(state="normal")
+                    self.stop_button.configure(state="disabled")
+                    self.refresh_insights()
+                self._apply_single_update(path, metadata)
+                count += 1
+            except queue.Empty:
+                break
+        # Sort dirty nodes by size (largest first)
+        if self.dirty_nodes:
+            for parent_id, tree_type in list(self.dirty_nodes)[:20]:
+                try:
+                    tree = self.tree_right if tree_type == "right" else self.tree_left
+                    self._sort_children_by_size(tree, parent_id)
+                    self.dirty_nodes.discard((parent_id, tree_type))
+                except:
+                    pass
+        if self.scanner:
+            self.global_stats_label.configure(
+                text=f"Files: {self.scanner.total_files:,} | Folders: {self.scanner.total_folders:,} | Errors: {self.scanner.total_errors:,}")
+            if self.is_scanning:
+                elapsed = max(time.time() - self.scan_started_at, 0.1)
+                rate = self.scanner.entries_scanned / elapsed
+                eta = None
+                if self.scanner.top_level_total > 0 and self.scanner.top_level_done > 0 and self.scanner.top_level_ema_sec:
+                    remaining = max(self.scanner.top_level_total - self.scanner.top_level_done, 0)
+                    eta = self.scanner.top_level_ema_sec * remaining
+                elif self.scanner.top_level_total > 0 and self.scanner.top_level_done > 0:
+                    remaining = max(self.scanner.top_level_total - self.scanner.top_level_done, 0)
+                    eta = (elapsed / self.scanner.top_level_done) * remaining
+                current = self.current_scan_item[:42] if self.current_scan_item else "Scanning..."
+                self.stats_label.configure(
+                    text=f"{current} | {rate:.0f} items/s | ETA: {self._format_eta(eta)}"
+                )
+            if count > 0 and (time.time() - self.last_insight_update > 1.2):
+                self.refresh_insights()
+                self.last_insight_update = time.time()
+        self.after(40 if count > 0 else 100, self.process_buffered_updates)
+
+    def _sort_children_by_size(self, tree, parent_id):
+        """Sort children of a tree node by size, largest first."""
+        try:
+            children = list(tree.get_children(parent_id))
+            if not children: return
+
+            def sort_key(item_id):
+                try:
+                    # Get raw size value (last column)
+                    values = tree.item(item_id, "values")
+                    if values:
+                        raw_size = values[-1] if len(values) > 0 else 0
+                        return int(raw_size) if raw_size and str(raw_size).isdigit() else 0
+                except:
+                    pass
+                return 0
+
+            sorted_children = sorted(children, key=sort_key, reverse=True)
+            for i, child_id in enumerate(sorted_children):
+                tree.move(child_id, parent_id, i)
+        except:
+            pass
+
+    def _apply_single_update(self, path, metadata):
+        if not self.scanner: return
+        size = metadata['size']
+        is_dir = metadata['is_dir']
+        files_cnt = metadata.get('files', 0)
+        folders_cnt = metadata.get('folders', 1 if is_dir else 0)
+        mtime_raw = metadata.get('mtime', 0)
+        mod_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(mtime_raw)) if mtime_raw else "..."
+        parent_path = os.path.dirname(path)
+        name = os.path.basename(path) or path
+        size_str = ss_format_size(size)
+        hint = ss_get_file_hint(path)
+        self.scan_cache[path] = {
+            "size": size, "is_dir": is_dir, "mtime": mtime_raw, "hint": hint,
+            "files": files_cnt, "folders": folders_cnt
+        }
+
+        if path != self.selected_path and not self._passes_filters(path, is_dir, mtime_raw):
+            if path in self.tree_map_right:
+                try:
+                    self.tree_right.delete(self.tree_map_right[path])
+                except Exception:
+                    pass
+                self.tree_map_right.pop(path, None)
+            if not is_dir and path in self.tree_map_left:
+                self.tree_map_left.pop(path, None)
+            return
+
+        if parent_path not in self.tree_map_right and path != self.selected_path:
+            self._ensure_parent_exists(parent_path)
+        parent_id_right = self.tree_map_right.get(parent_path, "")
+        parent_id_left = self.tree_map_left.get(parent_path, "")
+        percent_str = ""
+        if parent_id_right:
+            try:
+                p_size = int(self.tree_right.set(parent_id_right, "RawSize") or 0)
+                if p_size > 0: percent_str = f"{round((size / p_size) * 100, 1)}%"
+            except:
+                pass
+        tag = ""
+        lpath = path.lower()
+        if ":\\windows" in lpath or any(
+                sysfile in name.lower() for sysfile in ["pagefile.sys", "hiberfil.sys", "swapfile.sys"]):
+            tag = "core"
+            hint = f"Windows Core File - {hint}" if hint else "Windows Core File"
+        if not tag:
+            if size > SS_THRESHOLD_GB * 1024 ** 3:
+                tag = "large"
+            elif size > SS_THRESHOLD_MB * 1024 ** 2:
+                tag = "medium"
+        values = (size_str, size_str, f"{files_cnt:,}", f"{folders_cnt:,}", percent_str, mod_date, hint, path, size)
+        if path in self.tree_map_right:
+            self.tree_right.item(self.tree_map_right[path], values=values, tags=(tag,))
+        else:
+            new_id = self.tree_right.insert(parent_id_right, "end", text=name, values=values, tags=(tag,))
+            self.tree_map_right[path] = new_id
+        # Mark parent as dirty for sorting
+        if parent_id_right:
+            self.dirty_nodes.add((parent_id_right, "right"))
+        if is_dir:
+            rel_path = os.path.relpath(path, self.selected_path)
+            parts = [p for p in rel_path.split(os.sep) if p]
+            is_root = (path == self.selected_path)
+            is_main_parent = (len(parts) == 1)
+            excluded = {"$recycle.bin", "system volume information", "found.000"}
+            if name.lower() in excluded: is_main_parent = False
+            if is_root or (is_main_parent and size > 10 * 1024 ** 2):
+                if path in self.tree_map_left:
+                    self.tree_left.item(self.tree_map_left[path], values=(size_str, size), tags=(tag,))
+                else:
+                    new_id_l = self.tree_left.insert(parent_id_left, "end", text=name, values=(size_str, size),
+                                                     tags=(tag,))
+                    self.tree_map_left[path] = new_id_l
+                # Mark parent as dirty for sorting
+                if parent_id_left:
+                    self.dirty_nodes.add((parent_id_left, "left"))
+        if self.is_scanning and time.time() - self.last_status_update > 0.3:
+            self.current_scan_item = f"Scanning: {name[:50]}"
+            self.last_status_update = time.time()
+
+    def _ensure_parent_exists(self, path):
+        if path == self.selected_path or len(path) < 3: return
+        p_path = os.path.dirname(path)
+        self._ensure_parent_exists(p_path)
+        if path not in self.tree_map_right:
+            pid_r = self.tree_map_right.get(p_path, "")
+            pid_l = self.tree_map_left.get(p_path, "")
+            rid_p = self.tree_right.insert(pid_r, "end", text=os.path.basename(path),
+                                           values=("...", "...", "0", "0", "...", "...", "", path, 0))
+            self.tree_map_right[path] = rid_p
+            lid_p = self.tree_left.insert(pid_l, "end", text=os.path.basename(path), values=("..."))
+            self.tree_map_left[path] = lid_p
+
+    def _ensure_right_parent_exists(self, path):
+        if path == self.selected_path or len(path) < 3:
+            return
+        parent = os.path.dirname(path)
+        self._ensure_right_parent_exists(parent)
+        if path not in self.tree_map_right:
+            pid = self.tree_map_right.get(parent, "")
+            self.tree_map_right[path] = self.tree_right.insert(
+                pid, "end", text=os.path.basename(path),
+                values=("...", "...", "0", "0", "...", "...", "", path, 0)
+            )
+
+    def apply_filters_to_view(self):
+        """Re-apply filter controls to already-scanned data without rescanning."""
+        if not self.scan_cache:
+            self.stats_label.configure(text="No scan data available yet.")
+            return
+
+        for item in self.tree_right.get_children():
+            self.tree_right.delete(item)
+        self.tree_map_right = {}
+
+        root_name = os.path.basename(self.selected_path) or self.selected_path
+        root_meta = self.scan_cache.get(self.selected_path, {"size": 0, "files": 0, "folders": 0})
+        root_size = int(root_meta.get("size", 0) or 0)
+        root_size_str = ss_format_size(root_size)
+        root_id = self.tree_right.insert(
+            "", "end", text=root_name,
+            values=(root_size_str, root_size_str, f"{int(root_meta.get('files', 0)):,}",
+                    f"{int(root_meta.get('folders', 0)):,}", "100%", "...", "", self.selected_path, root_size),
+            open=True
+        )
+        self.tree_map_right[self.selected_path] = root_id
+
+        for path in sorted((p for p in self.scan_cache.keys() if p != self.selected_path),
+                           key=lambda p: (p.count(os.sep), p.lower())):
+            meta = self.scan_cache.get(path, {})
+            is_dir = bool(meta.get("is_dir", False))
+            size = int(meta.get("size", 0) or 0)
+            mtime_raw = meta.get("mtime", 0)
+            if not self._passes_filters(path, is_dir, mtime_raw):
+                continue
+
+            parent_path = os.path.dirname(path)
+            if parent_path not in self.tree_map_right:
+                self._ensure_right_parent_exists(parent_path)
+            parent_id = self.tree_map_right.get(parent_path, "")
+
+            size_str = ss_format_size(size)
+            mod_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(mtime_raw)) if mtime_raw else "..."
+            hint = meta.get("hint", "") or ss_get_file_hint(path)
+            files_cnt = int(meta.get("files", 0) or 0)
+            folders_cnt = int(meta.get("folders", 1 if is_dir else 0) or 0)
+            percent_str = ""
+            if parent_id:
+                try:
+                    p_size = int(self.tree_right.set(parent_id, "RawSize") or 0)
+                    if p_size > 0:
+                        percent_str = f"{round((size / p_size) * 100, 1)}%"
+                except Exception:
+                    pass
+
+            tag = ""
+            lpath = path.lower()
+            if ":\\windows" in lpath or any(n in os.path.basename(lpath) for n in ["pagefile.sys", "hiberfil.sys", "swapfile.sys"]):
+                tag = "core"
+            elif size > SS_THRESHOLD_GB * 1024 ** 3:
+                tag = "large"
+            elif size > SS_THRESHOLD_MB * 1024 ** 2:
+                tag = "medium"
+
+            values = (size_str, size_str, f"{files_cnt:,}", f"{folders_cnt:,}", percent_str, mod_date, hint, path, size)
+            self.tree_map_right[path] = self.tree_right.insert(
+                parent_id, "end", text=os.path.basename(path) or path, values=values, tags=(tag,)
+            )
+
+        self.stats_label.configure(text="Filters applied to current scan results.")
+        self.refresh_insights()
+
+    def refresh_insights(self):
+        if not hasattr(self, "insights_text"):
+            return
+        top_hogs_limit = 10
+        files = [
+            (p, m.get("size", 0), m.get("mtime", 0), (m.get("hint") or ""))
+            for p, m in self.scan_cache.items()
+            if not m.get("is_dir", True)
+        ]
+        top_hogs_pool = [f for f in files if not self._is_excluded_from_top_hogs(f[0])]
+        top_hogs = sorted(top_hogs_pool, key=lambda item: item[1], reverse=True)[:top_hogs_limit]
+
+        temp_like = [f for f in files if any(k in f[0].lower() for k in ["\\temp\\", "\\cache\\", "\\logs\\", ".tmp", ".log", ".dmp"])]
+        installers = [f for f in files if os.path.splitext(f[0].lower())[1] in {".iso", ".msi", ".zip", ".7z", ".rar"}]
+        old_downloads = [
+            f for f in files
+            if ("\\downloads\\" in f[0].lower()) and f[2] and ((time.time() - f[2]) / 86400 > 120)
+        ]
+        windows_db_candidates = [f for f in files if self._is_windows_search_db(f[0])]
+        self.insight_top_hogs = top_hogs
+        self.insight_temp_like = temp_like
+        self.insight_installers = installers
+        self.insight_old_downloads = old_downloads
+        self.insight_windows_db = windows_db_candidates
+
+        def sum_size(items):
+            return sum(i[1] for i in items)
+
+        lines = []
+        lines.append(f"Top Space Hogs (max {top_hogs_limit}):")
+        if top_hogs:
+            for idx, (p, sz, _, _) in enumerate(top_hogs, start=1):
+                lines.append(f"{idx}. {ss_format_size(sz)}  -  {p}")
+        else:
+            lines.append("No file-level data yet. Run a scan to populate insights.")
+
+        lines.append("")
+        lines.append("Quick Wins:")
+        lines.append(f"- Temp/Cache/Logs candidates: {len(temp_like)} items ({ss_format_size(sum_size(temp_like))})")
+        lines.append(f"- Installer/Archive cleanup candidates: {len(installers)} items ({ss_format_size(sum_size(installers))})")
+        lines.append(f"- Old Downloads (>120 days): {len(old_downloads)} items ({ss_format_size(sum_size(old_downloads))})")
+        if windows_db_candidates:
+            lines.append("- Windows.db detected: Stop 'Windows Search' in services.msc before deleting that file.")
+        lines.append("- Tip: Use Ext Filter (e.g. zip,iso,log,tmp) and Older Than to target cleanup safely.")
+
+        self.insights_text.configure(state="normal")
+        self.insights_text.delete("1.0", "end")
+        self.insights_text.insert("1.0", "\n".join(lines))
+        self.insights_text.configure(state="disabled")
+
+    def _open_path_in_explorer(self, path):
+        if os.name == 'nt':
+            subprocess.Popen(["explorer", os.path.normpath(path)])
+        else:
+            subprocess.Popen(["open", os.path.normpath(path)])
+
+    def open_services_console(self):
+        try:
+            if os.name == 'nt':
+                subprocess.Popen(["services.msc"])
+            else:
+                messagebox.showinfo("Services", "Service console shortcut is Windows-only.")
+        except Exception as e:
+            messagebox.showerror("Services", f"Failed to open Services: {e}")
+
+    def open_insight_locations(self, category):
+        mapping = {
+            "temp_like": self.insight_temp_like,
+            "installers": self.insight_installers,
+            "old_downloads": self.insight_old_downloads,
+        }
+        entries = mapping.get(category, [])
+        if not entries:
+            messagebox.showinfo("Insights", "No matching locations available right now. Run/refresh scan first.")
+            return
+        directories = []
+        seen = set()
+        for p, _, _, _ in entries:
+            d = os.path.dirname(p)
+            if d and d not in seen and os.path.exists(d):
+                seen.add(d)
+                directories.append(d)
+        if not directories:
+            messagebox.showinfo("Insights", "No valid directories to open.")
+            return
+        max_open = 8
+        for folder in directories[:max_open]:
+            self._open_path_in_explorer(folder)
+        if len(directories) > max_open:
+            messagebox.showinfo("Insights", f"Opened first {max_open} locations ({len(directories)} total found).")
+
+    def clean_top_hogs_from_insights(self):
+        if not self.insight_top_hogs:
+            messagebox.showinfo("Insights", "No top hog files are available to clean yet.")
+            return
+        top_hogs_limit = 10
+        existing = [(p, sz) for p, sz, _, _ in self.insight_top_hogs[:top_hogs_limit] if os.path.exists(p)]
+        if not existing:
+            messagebox.showinfo("Insights", "Top hog files are no longer present.")
+            return
+        protected = [(p, sz) for p, sz in existing if self._is_critical_system_path(p)]
+        candidates = [(p, sz) for p, sz in existing if not self._is_protected_cleanup_path(p)]
+        if not candidates:
+            messagebox.showinfo("Insights", "Top hogs are protected OS/system files and cannot be cleaned.")
+            return
+        total_size = sum(sz for _, sz in existing)
+        confirm = messagebox.askyesno(
+            "Clean Top Hogs",
+            f"Move {len(candidates)} large file(s) to Recycle Bin?\n"
+            f"Total: {ss_format_size(sum(sz for _, sz in candidates))}\n"
+            f"Protected skipped: {len(protected)}"
+        )
+        if not confirm:
+            return
+        moved_count = 0
+        failed_count = 0
+        windows_db_blocked = 0
+        for path, _ in candidates:
+            try:
+                if self._is_windows_search_db(path):
+                    windows_db_blocked += 1
+                    continue
+                if ss_send_to_recycle_bin(path):
+                    moved_count += 1
+                    self.scan_cache.pop(path, None)
+                    self._remove_path_from_trees(path)
+                else:
+                    failed_count += 1
+            except Exception:
+                failed_count += 1
+        self.refresh_insights()
+        msg = f"Moved: {moved_count}\nFailed: {failed_count}\nProtected skipped: {len(protected)}"
+        if windows_db_blocked:
+            msg += f"\nWindows.db skipped: {windows_db_blocked}\nStop 'Windows Search' in services.msc, then retry."
+        messagebox.showinfo("Insights Cleanup", msg)
+
+    def _remove_path_from_trees(self, path):
+        rid = self.tree_map_right.pop(path, None)
+        if rid:
+            try:
+                self.tree_right.delete(rid)
+            except Exception:
+                pass
+        lid = self.tree_map_left.pop(path, None)
+        if lid:
+            try:
+                self.tree_left.delete(lid)
+            except Exception:
+                pass
+
+    def open_selected(self):
+        selected = self.tree_right.selection()
+        if not selected: return
+        item = self.tree_right.item(selected[0])
+        path = item['values'][7]
+        if os.name == 'nt':
+            subprocess.run(['explorer', '/select,', os.path.normpath(path)])
+        else:
+            subprocess.run(['open', os.path.dirname(path)])
+
+    def delete_selected(self):
+        selected = self.tree_right.selection()
+        if not selected: return
+        item = self.tree_right.item(selected[0])
+        path = item['values'][7]
+        if self._is_protected_cleanup_path(path):
+            messagebox.showwarning("Protected Item", "This is a protected OS/system file and cannot be deleted here.")
+            return
+        if self._is_windows_search_db(path):
+            messagebox.showinfo(
+                "Windows Search DB",
+                "To delete Windows.db, stop the 'Windows Search' service first.\n"
+                "Open services.msc, stop 'Windows Search', then retry."
+            )
+            return
+        if messagebox.askyesno("Move to Recycle Bin", f"Move this item to Recycle Bin?\n{path}"):
+            try:
+                moved = ss_send_to_recycle_bin(path)
+                if moved:
+                    self._remove_path_from_trees(path)
+                    self.scan_cache.pop(path, None)
+                    self.refresh_insights()
+                    messagebox.showinfo("Success", "Item moved to Recycle Bin.")
+                else:
+                    messagebox.showerror("Error", "Could not move item to Recycle Bin.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to move item: {e}")
+
+    def delete_selected_permanent(self):
+        selected = self.tree_right.selection()
+        if not selected: return
+        item = self.tree_right.item(selected[0])
+        path = item['values'][7]
+        if self._is_protected_cleanup_path(path):
+            messagebox.showwarning("Protected Item", "This is a protected OS/system file and cannot be deleted here.")
+            return
+        if self._is_windows_search_db(path):
+            messagebox.showinfo(
+                "Windows Search DB",
+                "To delete Windows.db, stop the 'Windows Search' service first.\n"
+                "Open services.msc, stop 'Windows Search', then retry."
+            )
+            return
+        if messagebox.askyesno("Confirm Permanent Delete", f"Permanently delete this item?\n{path}"):
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                self._remove_path_from_trees(path)
+                self.scan_cache.pop(path, None)
+                self.refresh_insights()
+                messagebox.showinfo("Deleted", "Item permanently deleted.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete: {e}")
+
+
+# ==================== END STORAGESENSE MODULE ====================
+
+
+# Define modern professional themes
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# PREMIUM THEME SYSTEM
+# Crafted with Apple-level precision. Each palette is a cohesive
+# visual identity with intentional contrast ratios, visual hierarchy,
+# and OLED-optimized dark surfaces.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+# Horizon -- Windows 13 holographic futuristic (2035 aesthetic)
+HOLOGRAPHIC_THEME = {
+    'bg': '#030611',              # Deep cosmic substrate
+    'fg': '#EAF6FF',              # Holographic white
+    'surface': '#1A2E4E',         # Frosted glass panel
+    'surface_alt': '#213659',     # Elevated frosted layer
+    'primary': '#7FE4FF',         # Holographic cyan
+    'select_bg': '#2B4D7C',       # Deep selection glow
+    'select_fg': '#E7F4FF',
+    'button_bg': '#204F9A',       # Luminous touch control
+    'button_fg': '#FFFFFF',
+    'button_secondary_bg': '#2C3444',  # Brushed alloy gray
+    'button_secondary_fg': '#FFFFFF',
+    'entry_bg': '#152238',
+    'entry_fg': '#E7F4FF',
+    'text_bg': '#152238',
+    'text_fg': '#E7F4FF',
+    'log_text_fg': '#8DEFD1',     # Emerald terminal glow
+    'frame_bg': '#1A2E4E',
+    'label_bg': '#030611',
+    'label_fg': '#8FD8FF',        # Soft cyan label
+    'header_bg': '#0A1428',       # Polished top substrate
+    'header_fg': '#E7F4FF',
+    'progress_bg': '#7FE4FF',
+    'admin_fg': '#19F1A2',        # Emerald micro-LED
+    'admin_error_fg': '#FF4F7A',  # Alert crimson
+    'menu_bg': '#101C33',
+    'menu_fg': '#E7F4FF',
+    'task_bg': '#1E3460',
+    'task_fg': '#DCECFB',         # Soft blue-white data text
+    'task_border': '#A2C2E8',     # Frosted glass panel seam
+    'tooltip_bg': '#E7F4FF',
+    'tooltip_fg': '#030713',
+    'admin_indicator': '#19F1A2', # Emerald gem LED
+    'user_indicator': '#CC9733',  # Amber gem LED
+    'card_bg': '#1A2E4E',
+    'card_border': '#8FB8DC',
+    'glass_tint': '#162742',
+    'glass_tint_alt': '#1C3256',
+    'glass_edge': '#A2C2E8',
+    'glass_glow': '#69E0FF',
+    'label_fg_dim': '#6D88A6'     # Dim cosmic gray
+}
+
+
+# Enhanced startup logging
+
+def startup_log(message):
+    """Log startup messages to console only"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{timestamp} - {message}")
+
+
+startup_log("Application starting")
+
+# Skip relaunch with pythonw.exe for now to troubleshoot
+skip_relaunch = True
+if '--no-relaunch' not in sys.argv:
+    # Only relaunch if we're running from a console and not already using pythonw.exe
+    if not getattr(sys, 'frozen', False) and sys.stdout is not None and 'pythonw' not in sys.executable.lower():
+        startup_log("Attempting to relaunch with pythonw.exe")
+        try:
+            pythonw_path = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
+            if os.path.exists(pythonw_path):
+                startup_log(f"Found pythonw.exe at: {pythonw_path}")
+                startup_log("Skipping automatic relaunch for debugging")
+                skip_relaunch = True
+            else:
+                startup_log("pythonw.exe not found, continuing in console mode")
+        except Exception as e:
+            startup_log(f"Error during relaunch attempt: {str(e)}")
+            startup_log("Continuing in console mode")
+
+# Check if running on Windows
+if os.name != 'nt':
+    print("This application is designed to run on Windows only.")
+    startup_log("Not running on Windows, exiting")
+    sys.exit(1)
+
+
+# Check dependencies first
+def check_dependencies():
+    startup_log("Checking dependencies")
+    required_modules = [
+        'tkinter', 'ctypes', 'subprocess', 'winreg', 'threading',
+        'queue', 'time', 'argparse', 'json', 'hashlib', 're', 'pathlib',
+        'webbrowser'
+    ]
+    # pythoncom is bundled by PyInstaller as a native DLL and may not be
+    # importable via the standard import mechanism in a frozen exe.
+    # It is checked separately as an optional/warn-only dependency.
+    optional_modules = ['pythoncom']
+
+    missing_modules = []
+    for module in required_modules:
+        try:
+            __import__(module)
+            startup_log(f"Module OK: {module}")
+        except ImportError as e:
+            missing_modules.append(f"{module}: {str(e)}")
+            startup_log(f"Module missing: {module} - {str(e)}")
+
+    for module in optional_modules:
+        try:
+            __import__(module)
+            startup_log(f"Module OK: {module}")
+        except ImportError as e:
+            startup_log(f"Module optional/warn: {module} - {str(e)} (non-fatal)")
+
+    if missing_modules:
+        print("Missing required modules:")
+        startup_log("Missing modules detected:")
+        for module in missing_modules:
+            print(f"  - {module}")
+            startup_log(f"  - {module}")
+        print("\nPlease install them using: pip install <module_name>")
+        startup_log("Dependency check failed, exiting")
+        return False
+    startup_log("All dependencies OK")
+    return True
+
+
+if not check_dependencies():
+    print("Dependencies check failed. Exiting.")
+    sys.exit(1)
+
+
+class SecurityUtils:
+    """Security utilities for safe operations"""
+
+    @staticmethod
+    def sanitize_path(path_str):
+        """Sanitize file paths to prevent path traversal attacks"""
+        try:
+            # Convert to Path object and resolve
+            path = Path(path_str).resolve()
+
+            # Check if path is within allowed directories
+            allowed_roots = [
+                Path(os.environ.get('TEMP', 'C:\\Temp')),
+                Path(os.environ.get('SystemRoot', 'C:\\Windows')),
+                Path('C:\\PowerShell'),
+                Path(os.environ.get('APPDATA', 'C:\\Users\\Default\\AppData\\Roaming'))
+            ]
+
+            for root in allowed_roots:
+                try:
+                    path.relative_to(root.resolve())
+                    return str(path)
+                except ValueError:
+                    continue
+
+            # If not in allowed directories, reject
+            raise ValueError(f"Path not in allowed directories: {path}")
+
+        except Exception as e:
+            raise ValueError(f"Invalid path: {path_str}")
+
+    @staticmethod
+    def sanitize_command_args(args):
+        """Sanitize command line arguments to prevent injection"""
+        safe_args = []
+        for arg in args:
+            # Remove potentially dangerous characters
+            safe_arg = re.sub(r'[;&|`$(){}[\]<>]', '', str(arg))
+            # Limit length
+            if len(safe_arg) > 1000:
+                raise ValueError("Argument too long")
+            safe_args.append(safe_arg)
+        return safe_args
+
+    @staticmethod
+    def validate_registry_key(key_path):
+        """Validate registry key paths"""
+        allowed_patterns = [
+            r'^SOFTWARE\\Microsoft\\Windows\\',
+            r'^SOFTWARE\\Policies\\Microsoft\\Windows\\',
+            r'^SYSTEM\\CurrentControlSet\\Control\\',
+            r'^SOFTWARE\\Microsoft\\GameBar',
+            r'^SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VolumeCaches'
+        ]
+
+        for pattern in allowed_patterns:
+            if re.match(pattern, key_path, re.IGNORECASE):
+                return True
+
+        raise ValueError(f"Registry key not allowed: {key_path}")
+class Tooltip:
+    """Create a tooltip for a given widget"""
+
+    def __init__(self, widget, text='widget info', theme=HOLOGRAPHIC_THEME):
+        self.widget = widget
+        self.text = text
+        self.theme = theme
+        self.tooltip = None
+        self.id = None
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hide()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(400, self.show)
+
+    def unschedule(self):
+        if self.id:
+            try:
+                self.widget.after_cancel(self.id)
+            except Exception:
+                pass
+            self.id = None
+
+    def show(self):
+        if self.tooltip or not self.text:
+            return
+
+        x = self.widget.winfo_pointerx() + 15
+        y = self.widget.winfo_pointery() + 15
+
+        try:
+            self.tooltip = tk.Toplevel(self.widget)
+            self.tooltip.wm_overrideredirect(True)
+            self.tooltip.wm_geometry(f"+{x}+{y}")
+            self.tooltip.attributes("-topmost", True)
+
+            label = tk.Label(
+                self.tooltip,
+                text=self.text,
+                justify=tk.LEFT,
+                background=self.theme.get('tooltip_bg', '#1D1D1F'),
+                foreground=self.theme.get('tooltip_fg', '#F5F5F7'),
+                relief=tk.FLAT,
+                padx=14,
+                pady=8,
+                font=('Segoe UI', 10),
+                wraplength=380
+            )
+            label.pack()
+
+            # Subtle border using outer bg
+            self.tooltip.config(bg=self.theme.get('tooltip_bg', '#1D1D1F'))
+        except Exception as e:
+            print(f"DEBUG: Tooltip creation failed: {e}")
+            self.hide()
+
+    def hide(self):
+        if self.tooltip:
+            try:
+                self.tooltip.destroy()
+            except Exception:
+                pass
+            self.tooltip = None
+
+
+# PC Reporter class moved outside of SystemCleanerGUI
+class PCReporter:
+    def __init__(self):
+        self.report_data = {
+            "system_info": {},
+            "hardware": {},
+            "software": {},
+            "network": {},
+            "security": {},
+            "users": {},
+            "environment": {},
+            "processes": [],
+            "services": [],
+            "devices": [],
+            "performance": {},
+            "updates": {},
+            "vulnerabilities": {},
+            "startup_items": {}  # Added for startup items
+        }
+        self.report_file = "PC_Report.html"
+
+    def collect_system_info(self):
+        """Collect basic system information"""
+        import psutil
+        boot_time = datetime.fromtimestamp(psutil.boot_time())
+        uptime = datetime.now() - boot_time
+
+        self.report_data["system_info"] = {
+            "Computer Name": socket.gethostname(),
+            "Operating System": platform.system(),
+            "OS Version": platform.version(),
+            "OS Release": platform.release(),
+            "Architecture": platform.machine(),
+            "Processor": platform.processor(),
+            "System UUID": str(uuid.getnode()),
+            "Python Version": platform.python_version(),
+            "Boot Time": boot_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "System Uptime": f"{uptime.days} days, {uptime.seconds // 3600} hours, {(uptime.seconds % 3600) // 60} minutes",
+            "Report Generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    def collect_hardware_info(self):
+        """Collect detailed hardware information"""
+        import psutil
+        # CPU Information
+        cpu_freq = psutil.cpu_freq()
+        cpu_info = {
+            "Physical Cores": psutil.cpu_count(logical=False),
+            "Total Cores": psutil.cpu_count(logical=True),
+            "Max Frequency": f"{cpu_freq.max:.2f} MHz" if cpu_freq else "N/A",
+            "Current Frequency": f"{cpu_freq.current:.2f} MHz" if cpu_freq else "N/A",
+            "Min Frequency": f"{cpu_freq.min:.2f} MHz" if cpu_freq else "N/A",
+            "CPU Usage": f"{psutil.cpu_percent(interval=1)}%",
+            "CPU Usage Per Core": dict(enumerate(psutil.cpu_percent(interval=1, percpu=True)))
+        }
+
+        # Memory Information
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        memory_info = {
+            "Total Memory": f"{mem.total / (1024 ** 3):.2f} GB",
+            "Available Memory": f"{mem.available / (1024 ** 3):.2f} GB",
+            "Used Memory": f"{mem.used / (1024 ** 3):.2f} GB",
+            "Memory Percentage": f"{mem.percent}%",
+            "Total Swap": f"{swap.total / (1024 ** 3):.2f} GB",
+            "Used Swap": f"{swap.used / (1024 ** 3):.2f} GB",
+            "Free Swap": f"{swap.free / (1024 ** 3):.2f} GB",
+            "Swap Percentage": f"{swap.percent}%",
+            "Memory Speed": self._get_memory_speed()
+        }
+
+        # Disk Information
+        disk_info = {}
+        disk_io = psutil.disk_io_counters()
+        for partition in psutil.disk_partitions():
+            try:
+                partition_usage = psutil.disk_usage(partition.mountpoint)
+                disk_info[f"Drive {partition.device}"] = {
+                    "Mount Point": partition.mountpoint,
+                    "File System": partition.fstype,
+                    "Total Size": f"{partition_usage.total / (1024 ** 3):.2f} GB",
+                    "Used": f"{partition_usage.used / (1024 ** 3):.2f} GB",
+                    "Free": f"{partition_usage.free / (1024 ** 3):.2f} GB",
+                    "Percentage": f"{partition_usage.percent}%",
+                    "Drive Type": self._get_drive_type(partition.device)
+                }
+            except PermissionError:
+                continue
+
+        # Add disk I/O statistics
+        if disk_io:
+            disk_info["Disk I/O Statistics"] = {
+                "Read Count": f"{disk_io.read_count:,}",
+                "Write Count": f"{disk_io.write_count:,}",
+                "Read Bytes": f"{disk_io.read_bytes / (1024 ** 3):.2f} GB",
+                "Write Bytes": f"{disk_io.write_bytes / (1024 ** 3):.2f} GB",
+                "Read Time": f"{disk_io.read_time} ms",
+                "Write Time": f"{disk_io.write_time} ms"
+            }
+
+        # GPU Information
+        gpu_info = self._get_gpu_info()
+
+        # Motherboard Information
+        motherboard_info = self._get_motherboard_info()
+
+        # Battery Information (for laptops)
+        battery_info = self._get_battery_info()
+
+        # Temperature Information
+        temp_info = self._get_temperature_info()
+
+        self.report_data["hardware"] = {
+            "CPU": cpu_info,
+            "Memory": memory_info,
+            "Storage": disk_info,
+            "Graphics": gpu_info,
+            "Motherboard": motherboard_info
+        }
+
+        if battery_info:
+            self.report_data["hardware"]["Battery"] = battery_info
+
+        if temp_info:
+            self.report_data["hardware"]["Temperature"] = temp_info
+
+    def _get_memory_speed(self):
+        """Get memory speed information"""
+        try:
+            if platform.system() == "Windows":
+                # Try multiple methods to get memory speed
+                commands = [
+                    ["wmic", "memorychip", "get", "speed", "/format:list"],
+                    ["wmic", "MEMORYCHIP", "get", "Speed", "/value"]
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            speeds = re.findall(r"Speed=(\d+)", result.stdout)
+                            if speeds:
+                                return f"{speeds[0]} MHz"
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        continue
+
+                return "Information not available"
+        except Exception:
+            return "Information not available"
+
+    def _get_drive_type(self, device):
+        """Get drive type (HDD/SSD)"""
+        try:
+            if platform.system() == "Windows":
+                # Clean device name for WMIC query
+                clean_device = device.replace('\\', '').replace(':', '')
+                commands = [
+                    ["wmic", "diskdrive", "where", f"DeviceID='\\\\.\\{clean_device}'", "get", "MediaType",
+                     "/format:list"],
+                    ["wmic", "diskdrive", "get", "Model,MediaType,Size", "/format:list"],
+                    ["powershell", "Get-PhysicalDisk | Select-Object MediaType,DeviceId | Format-List"]
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            if "SSD" in result.stdout.upper():
+                                return "SSD"
+                            elif "HDD" in result.stdout.upper() or "FIXED" in result.stdout.upper():
+                                return "HDD"
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        continue
+
+                return "Unknown"
+        except Exception:
+            return "Unknown"
+
+    def _get_gpu_info(self):
+        """Get detailed GPU information"""
+        gpu_info = {}
+        try:
+            if platform.system() == "Windows":
+                commands = [
+                    ["wmic", "path", "win32_VideoController", "get", "name,adapterram,driverversion,driverdate",
+                     "/format:list"],
+                    ["wmic", "path", "win32_VideoController", "get", "name", "/value"],
+                    ["powershell",
+                     "Get-WmiObject -Class Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion | Format-List"]
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            gpu_data = {}
+                            for line in result.stdout.split('\n'):
+                                if '=' in line:
+                                    key, value = line.split('=', 1)
+                                    gpu_data[key.strip()] = value.strip()
+                                elif ':' in line and not line.strip().startswith('-'):
+                                    parts = line.split(':', 1)
+                                    if len(parts) == 2:
+                                        gpu_data[parts[0].strip()] = parts[1].strip()
+
+                            if gpu_data.get("Name"):
+                                gpu_info["GPU Name"] = gpu_data["Name"]
+                                if gpu_data.get("AdapterRAM"):
+                                    try:
+                                        ram_mb = int(gpu_data["AdapterRAM"]) // (1024 * 1024)
+                                        gpu_info["GPU Memory"] = f"{ram_mb} MB"
+                                    except:
+                                        pass
+                                if gpu_data.get("DriverVersion"):
+                                    gpu_info["Driver Version"] = gpu_data["DriverVersion"]
+                                if gpu_data.get("DriverDate"):
+                                    gpu_info["Driver Date"] = gpu_data["DriverDate"]
+                                break
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        continue
+            else:
+                # For Linux/Mac
+                commands = [
+                    ["lspci", "-v"],
+                    ["lspci"],
+                    ["systeminfo"]  # On some systems
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            for line in result.stdout.split('\n'):
+                                if 'VGA' in line or '3D' in line or 'Display' in line:
+                                    gpu_info["GPU"] = line.split(':')[1].strip() if ':' in line else line.strip()
+                                    break
+                            if gpu_info:
+                                break
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                        continue
+        except Exception:
+            pass
+
+        if not gpu_info:
+            gpu_info["GPU"] = "Information not available"
+
+        return gpu_info
+
+    def _get_motherboard_info(self):
+        """Get motherboard information with multiple fallback methods"""
+        motherboard_info = {}
+
+        try:
+            if platform.system() == "Windows":
+                # Method 1: Try to get system information using systeminfo command
+                try:
+                    result = subprocess.run(
+                        ["systeminfo"],
+                        capture_output=True, text=True, timeout=30,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.split('\n')
+                        for line in lines:
+                            if "System Model:" in line:
+                                motherboard_info["System Model"] = line.split(":", 1)[1].strip()
+                            elif "System Manufacturer:" in line:
+                                motherboard_info["System Manufacturer"] = line.split(":", 1)[1].strip()
+                            elif "System Type:" in line:
+                                motherboard_info["System Type"] = line.split(":", 1)[1].strip()
+                            elif "BIOS Version:" in line:
+                                motherboard_info["BIOS Version"] = line.split(":", 1)[1].strip()
+                            elif "BIOS Mode:" in line:
+                                motherboard_info["BIOS Mode"] = line.split(":", 1)[1].strip()
+                except Exception:
+                    pass
+
+                # Method 2: Try WMIC commands if systeminfo didn't work
+                if not motherboard_info or len(motherboard_info) < 3:
+                    commands = [
+                        ("wmic baseboard get manufacturer /format:list", "Manufacturer"),
+                        ("wmic baseboard get product /format:list", "Product"),
+                        ("wmic baseboard get version /format:list", "Version"),
+                        ("wmic bios get serialnumber /format:list", "Serial Number"),
+                        ("wmic bios get version /format:list", "BIOS Version"),
+                        ("wmic csproduct get name,vendor,identifyingnumber /format:list", "System Info")
+                    ]
+
+                    for cmd, key in commands:
+                        try:
+                            result = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=10,
+                                                    creationflags=CREATE_NO_WINDOW)
+                            if result.returncode == 0:
+                                if "System Info" in key:
+                                    # Parse system info
+                                    for line in result.stdout.split('\n'):
+                                        if '=' in line:
+                                            k, v = line.split('=', 1)
+                                            if k.strip() == "Name":
+                                                motherboard_info["System Model"] = v.strip()
+                                            elif k.strip() == "Vendor":
+                                                motherboard_info["System Manufacturer"] = v.strip()
+                                            elif k.strip() == "IdentifyingNumber":
+                                                motherboard_info["System Serial"] = v.strip()
+                                else:
+                                    match = re.search(rf"{key}=(.+)", result.stdout)
+                                    if match:
+                                        motherboard_info[key] = match.group(1).strip()
+                        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                            continue
+
+                # Method 3: Try PowerShell commands as fallback
+                if not motherboard_info or len(motherboard_info) < 3:
+                    try:
+                        ps_commands = [
+                            "Get-ComputerInfo | Select-Object BiosManufacturer,BiosSerialNumber,BiosVersion | Format-List",
+                            "Get-WmiObject -Class Win32_BaseBoard | Select-Object Manufacturer,Product,Version,SerialNumber | Format-List",
+                            "Get-WmiObject -Class Win32_ComputerSystemProduct | Select-Object Name,Vendor,UUID | Format-List"
+                        ]
+
+                        for ps_cmd in ps_commands:
+                            try:
+                                result = subprocess.run(
+                                    ["powershell", "-Command", ps_cmd],
+                                    capture_output=True, text=True, timeout=15,
+                                    creationflags=CREATE_NO_WINDOW
+                                )
+                                if result.returncode == 0:
+                                    for line in result.stdout.split('\n'):
+                                        if ':' in line and not line.strip().startswith('-'):
+                                            parts = line.split(':', 1)
+                                            if len(parts) == 2:
+                                                k = parts[0].strip()
+                                                v = parts[1].strip()
+                                                if "Manufacturer" in k and "Bios" in k:
+                                                    motherboard_info["BIOS Manufacturer"] = v
+                                                elif "SerialNumber" in k:
+                                                    motherboard_info["BIOS Serial"] = v
+                                                elif "Version" in k and "Bios" in k:
+                                                    motherboard_info["BIOS Version"] = v
+                                                elif "Manufacturer" in k and "Bios" not in k:
+                                                    motherboard_info["System Manufacturer"] = v
+                                                elif "Product" in k:
+                                                    motherboard_info["System Model"] = v
+                                                elif "Name" in k:
+                                                    motherboard_info["System Model"] = v
+                                                elif "Vendor" in k:
+                                                    motherboard_info["System Manufacturer"] = v
+                                                elif "UUID" in k:
+                                                    motherboard_info["System UUID"] = v
+                                        if len(motherboard_info) >= 3:
+                                            break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+
+        except Exception:
+            pass
+
+        # If we still don't have enough information, try to get at least basic info
+        if not motherboard_info or len(motherboard_info) < 2:
+            try:
+                # Try to get system manufacturer from registry
+                try:
+                    result = subprocess.run(
+                        ["reg", "query", "HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS", "/v",
+                         "SystemManufacturer"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        match = re.search(r"SystemManufacturer\s+REG_SZ\s+(.+)", result.stdout)
+                        if match:
+                            motherboard_info["System Manufacturer"] = match.group(1).strip()
+                except Exception:
+                    pass
+
+                # Try to get system product name from registry
+                try:
+                    result = subprocess.run(
+                        ["reg", "query", "HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS", "/v",
+                         "SystemProductName"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        match = re.search(r"SystemProductName\s+REG_SZ\s+(.+)", result.stdout)
+                        if match:
+                            motherboard_info["System Model"] = match.group(1).strip()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        if not motherboard_info:
+            motherboard_info["Error"] = "Information not available"
+
+        return motherboard_info
+
+    def _get_battery_info(self):
+        """Get battery information"""
+        import psutil
+        try:
+            battery = psutil.sensors_battery()
+            if battery:
+                return {
+                    "Battery Percentage": f"{battery.percent}%",
+                    "Power Plugged": "Yes" if battery.power_plugged else "No",
+                    "Time Left": f"{battery.secsleft // 3600}h {(battery.secsleft % 3600) // 60}m" if battery.secsleft != psutil.POWER_TIME_UNLIMITED else "Unlimited"
+                }
+        except Exception:
+            pass
+        return None
+
+    def _get_temperature_info(self):
+        """Get temperature sensor information"""
+        import psutil
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                temp_info = {}
+                for name, entries in temps.items():
+                    temp_info[name] = {}
+                    for entry in entries:
+                        temp_info[name][entry.label or "Sensor"] = f"{entry.current:.1f}Â°C"
+                        if entry.high:
+                            temp_info[name][f"{entry.label or 'Sensor'} High"] = f"{entry.high:.1f}Â°C"
+                        if entry.critical:
+                            temp_info[name][f"{entry.label or 'Sensor'} Critical"] = f"{entry.critical:.1f}Â°C"
+                return temp_info
+        except Exception:
+            pass
+        return None
+
+    def collect_software_info(self):
+        """Collect installed software information"""
+        software_info = {}
+
+        try:
+            if platform.system() == "Windows":
+                # Try multiple methods to get installed software
+                # Method 1: Try registry-based approach first (more reliable)
+                try:
+                    # Get software from HKLM
+                    registry_paths = [
+                        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+                    ]
+
+                    for registry_path in registry_paths:
+                        try:
+                            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, registry_path) as key:
+                                for i in range(winreg.QueryInfoKey(key)[0]):
+                                    try:
+                                        subkey_name = winreg.EnumKey(key, i)
+                                        with winreg.OpenKey(key, subkey_name) as subkey:
+                                            try:
+                                                name = winreg.QueryValueEx(subkey, "DisplayName")[0]
+                                                version = winreg.QueryValueEx(subkey, "DisplayVersion")[
+                                                    0] if "DisplayVersion" in [item[0] for item in winreg.QueryInfoKey(
+                                                    subkey)] else "Unknown"
+                                                publisher = winreg.QueryValueEx(subkey, "Publisher")[
+                                                    0] if "Publisher" in [item[0] for item in
+                                                                          winreg.QueryInfoKey(subkey)] else "Unknown"
+                                                install_date = winreg.QueryValueEx(subkey, "InstallDate")[
+                                                    0] if "InstallDate" in [item[0] for item in
+                                                                            winreg.QueryInfoKey(subkey)] else ""
+
+                                                if install_date and len(install_date) == 8:
+                                                    install_date = f"{install_date[:4]}-{install_date[4:6]}-{install_date[6:8]}"
+
+                                                software_info[name] = {
+                                                    "Version": version,
+                                                    "Vendor": publisher,
+                                                    "Install Date": install_date
+                                                }
+                                            except (WindowsError, KeyError):
+                                                continue
+                                    except (WindowsError, KeyError):
+                                        continue
+                        except (WindowsError, KeyError):
+                            continue
+
+                    # Get software from HKCU
+                    try:
+                        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall") as key:
+                            for i in range(winreg.QueryInfoKey(key)[0]):
+                                try:
+                                    subkey_name = winreg.EnumKey(key, i)
+                                    with winreg.OpenKey(key, subkey_name) as subkey:
+                                        try:
+                                            name = winreg.QueryValueEx(subkey, "DisplayName")[0]
+                                            version = winreg.QueryValueEx(subkey, "DisplayVersion")[
+                                                0] if "DisplayVersion" in [item[0] for item in
+                                                                           winreg.QueryInfoKey(subkey)] else "Unknown"
+                                            publisher = winreg.QueryValueEx(subkey, "Publisher")[0] if "Publisher" in [
+                                                item[0] for item in winreg.QueryInfoKey(subkey)] else "Unknown"
+                                            install_date = winreg.QueryValueEx(subkey, "InstallDate")[
+                                                0] if "InstallDate" in [item[0] for item in
+                                                                        winreg.QueryInfoKey(subkey)] else ""
+
+                                            if install_date and len(install_date) == 8:
+                                                install_date = f"{install_date[:4]}-{install_date[4:6]}-{install_date[6:8]}"
+
+                                            software_info[name] = {
+                                                "Version": version,
+                                                "Vendor": publisher,
+                                                "Install Date": install_date
+                                            }
+                                        except (WindowsError, KeyError):
+                                            continue
+                                except (WindowsError, KeyError):
+                                    continue
+                    except (WindowsError, KeyError):
+                        pass
+
+                    if software_info:
+                        self.report_data["software"] = software_info
+                        return
+                except Exception as e:
+                    pass
+
+                # Method 2: Try PowerShell as fallback
+                try:
+                    ps_script = '''
+                    $software = @()
+                    $paths = @(
+                        "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",
+                        "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",
+                        "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"
+                    )
+
+                    foreach ($path in $paths) {
+                        try {
+                            Get-ItemProperty $path -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | ForEach-Object {
+                                $software += [PSCustomObject]@{
+                                    Name = $_.DisplayName
+                                    Version = $_.DisplayVersion
+                                    Publisher = $_.Publisher
+                                    InstallDate = $_.InstallDate
+                                }
+                            }
+                        } catch {
+                            # Ignore errors
+                        }
+                    }
+
+                    $software | ConvertTo-Json
+                    '''
+
+                    result = subprocess.run(
+                        ["powershell", "-Command", ps_script],
+                        capture_output=True, text=True, timeout=30,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+
+                    if result.returncode == 0 and result.stdout.strip():
+                        try:
+                            software_data = json.loads(result.stdout)
+                            for item in software_data:
+                                name = item.get("Name", "")
+                                if name:
+                                    version = item.get("Version", "Unknown")
+                                    publisher = item.get("Publisher", "Unknown")
+                                    install_date = item.get("InstallDate", "")
+
+                                    if install_date and len(install_date) == 8:
+                                        install_date = f"{install_date[:4]}-{install_date[4:6]}-{install_date[6:8]}"
+
+                                    software_info[name] = {
+                                        "Version": version,
+                                        "Vendor": publisher,
+                                        "Install Date": install_date
+                                    }
+                        except json.JSONDecodeError:
+                            pass
+
+                        if software_info:
+                            self.report_data["software"] = software_info
+                            return
+                except Exception:
+                    pass
+
+                # Method 3: Try WMIC as last resort
+                try:
+                    result = subprocess.run(
+                        ["wmic", "product", "get", "name,version,vendor,installdate", "/format:csv"],
+                        capture_output=True, text=True, timeout=30,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+
+                    if result.returncode == 0:
+                        lines = result.stdout.split('\n')
+                        for line in lines[1:]:  # Skip header
+                            if line.strip():
+                                parts = line.split(',')
+                                if len(parts) >= 4 and parts[1].strip():
+                                    install_date = parts[4].strip() if len(parts) > 4 else ""
+                                    if install_date and len(install_date) == 8:
+                                        install_date = f"{install_date[:4]}-{install_date[4:6]}-{install_date[6:8]}"
+
+                                    software_info[parts[1].strip()] = {
+                                        "Version": parts[2].strip(),
+                                        "Vendor": parts[3].strip(),
+                                        "Install Date": install_date
+                                    }
+
+                        if software_info:
+                            self.report_data["software"] = software_info
+                            return
+                except Exception:
+                    pass
+
+                # If all methods fail, add error message
+                software_info["Error"] = "Could not retrieve software information using multiple methods"
+            else:
+                # For Linux/Mac, try to get installed packages
+                if platform.system() == "Linux":
+                    # Try dpkg (Debian/Ubuntu)
+                    try:
+                        result = subprocess.run(
+                            ["dpkg-query", "-W", "-f=${Package}\t${Version}\t${Maintainer}\n"],
+                            capture_output=True, text=True,
+                            creationflags=CREATE_NO_WINDOW
+                        )
+                        if result.returncode == 0:
+                            for line in result.stdout.split('\n'):
+                                if line.strip():
+                                    parts = line.split('\t')
+                                    if len(parts) >= 2:
+                                        software_info[parts[0]] = {
+                                            "Version": parts[1],
+                                            "Vendor": parts[2] if len(parts) > 2 else "Unknown"
+                                        }
+                    except FileNotFoundError:
+                        # Try rpm (RedHat/CentOS)
+                        try:
+                            result = subprocess.run(
+                                ["rpm", "-qa", "--queryformat", "%{NAME}\t%{VERSION}\t%{VENDOR}\n"],
+                                capture_output=True, text=True,
+                                creationflags=CREATE_NO_WINDOW
+                            )
+                            if result.returncode == 0:
+                                for line in result.stdout.split('\n'):
+                                    if line.strip():
+                                        parts = line.split('\t')
+                                        if len(parts) >= 2:
+                                            software_info[parts[0]] = {
+                                                "Version": parts[1],
+                                                "Vendor": parts[2] if len(parts) > 2 else "Unknown"
+                                            }
+                        except FileNotFoundError:
+                            pass
+        except Exception as e:
+            software_info["Error"] = f"Could not retrieve software information: {str(e)}"
+
+        self.report_data["software"] = software_info
+
+    def collect_startup_info(self):
+        """Collect startup items information"""
+        startup_info = {
+            "Registry": {},
+            "Startup Folders": {}
+        }
+
+        try:
+            if platform.system() == "Windows":
+                # Collect registry startup items
+                registry_paths = [
+                    (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+                    (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"),
+                    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce")
+                ]
+
+                for root, path in registry_paths:
+                    try:
+                        with winreg.OpenKey(root, path) as key:
+                            key_name = f"HK{'CU' if root == winreg.HKEY_CURRENT_USER else 'LM'}\\{path}"
+                            startup_info["Registry"][key_name] = {}
+
+                            for i in range(winreg.QueryInfoKey(key)[0]):
+                                try:
+                                    name, value, _ = winreg.EnumValue(key, i)
+                                    startup_info["Registry"][key_name][name] = {
+                                        "Value": value,
+                                        "Status": "Enabled"
+                                    }
+                                except (WindowsError, KeyError):
+                                    continue
+                    except (WindowsError, KeyError):
+                        continue
+
+                # Collect startup folder items
+                startup_folders = [
+                    os.path.join(os.environ.get('APPDATA', ''), "Microsoft", "Windows", "Start Menu", "Programs",
+                                 "Startup"),
+                    os.path.join(os.environ.get('ProgramData', ''), "Microsoft", "Windows", "Start Menu", "Programs",
+                                 "Startup")
+                ]
+
+                for folder_path in startup_folders:
+                    try:
+                        if os.path.exists(folder_path):
+                            folder_name = os.path.basename(folder_path)
+                            startup_info["Startup Folders"][folder_name] = {}
+
+                            for item in os.listdir(folder_path):
+                                item_path = os.path.join(folder_path, item)
+                                if os.path.isfile(item_path):
+                                    startup_info["Startup Folders"][folder_name][item] = {
+                                        "Path": item_path,
+                                        "Status": "Enabled"
+                                    }
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            startup_info["Error"] = f"Could not retrieve startup information: {str(e)}"
+
+        self.report_data["startup_items"] = startup_info
+
+    def _collect_windows_updates(self):
+        """Collect Windows update information"""
+        try:
+            commands = [
+                ["wmic", "qfe", "get", "hotfixid,installedon,installedby", "/format:csv"],
+                ["wmic", "qfe", "list", "brief"],
+                ["powershell", "Get-HotFix | Select-Object HotFixID,InstalledOn | Format-Table"]
+            ]
+
+            for cmd in commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
+                                            creationflags=CREATE_NO_WINDOW)
+                    if result.returncode == 0:
+                        updates = []
+                        lines = result.stdout.split('\n')
+                        for line in lines[1:]:  # Skip header
+                            if line.strip():
+                                parts = line.split(',')
+                                if len(parts) >= 4:
+                                    updates.append({
+                                        "Hotfix ID": parts[1].strip(),
+                                        "Installed On": parts[2].strip(),
+                                        "Installed By": parts[3].strip()
+                                    })
+                        if updates:
+                            self.report_data["updates"] = updates[:20]  # Last 20 updates
+                            break
+                except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                    continue
+        except Exception:
+            self.report_data["updates"] = {"Error": "Could not retrieve update information"}
+
+    def collect_vulnerability_info(self):
+        """Collect vulnerability and security update information"""
+        vulnerability_info = {}
+
+        try:
+            if platform.system() == "Windows":
+                # Get Windows Update status
+                try:
+                    result = subprocess.run(
+                        ["powershell", "(Get-WmiObject -Class Win32_QuickFixEngineering).Count"],
+                        capture_output=True, text=True, timeout=15,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        try:
+                            update_count = int(result.stdout.strip())
+                            vulnerability_info["Installed Updates Count"] = str(update_count)
+                        except ValueError:
+                            pass
+                except Exception:
+                    pass
+
+                # Check for pending updates
+                try:
+                    result = subprocess.run(
+                        ["powershell",
+                         "(New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher().Search(\"IsInstalled=0\").Updates.Count"],
+                        capture_output=True, text=True, timeout=30,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        try:
+                            pending_count = int(result.stdout.strip())
+                            if pending_count > 0:
+                                vulnerability_info["Pending Updates"] = f"{pending_count} updates available"
+                                vulnerability_info["Status"] = "Updates Available"
+                            else:
+                                vulnerability_info["Pending Updates"] = "No pending updates"
+                                vulnerability_info["Status"] = "Up to Date"
+                        except ValueError:
+                            pass
+                except Exception:
+                    pass
+
+                # Get last scan date
+                try:
+                    result = subprocess.run(
+                        ["powershell",
+                         "(Get-WmiObject -Class Win32_QuickFixEngineering | Sort-Object -Property InstalledOn -Descending | Select-Object -First 1).InstalledOn"],
+                        capture_output=True, text=True, timeout=15,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        vulnerability_info["Last Update Scan"] = result.stdout.strip()
+                except Exception:
+                    pass
+
+                # Check for Windows Defender status
+                try:
+                    result = subprocess.run(
+                        ["powershell",
+                         "Get-MpComputerStatus | Select-Object AntispywareEnabled, AntivirusEnabled, NISEnabled, RealTimeProtectionEnabled | Format-List"],
+                        capture_output=True, text=True, timeout=15,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        defender_status = {}
+                        for line in result.stdout.split('\n'):
+                            if ':' in line and not line.strip().startswith('-'):
+                                parts = line.split(':', 1)
+                                if len(parts) == 2:
+                                    key = parts[0].strip()
+                                    value = parts[1].strip()
+                                    if value:
+                                        defender_status[key] = value
+                        if defender_status:
+                            vulnerability_info["Windows Defender"] = defender_status
+                except Exception:
+                    pass
+
+                # Check for Windows version and end of life status
+                try:
+                    result = subprocess.run(
+                        ["powershell",
+                         "Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsVersion | Format-List"],
+                        capture_output=True, text=True, timeout=15,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        version_info = {}
+                        for line in result.stdout.split('\n'):
+                            if ':' in line and not line.strip().startswith('-'):
+                                parts = line.split(':', 1)
+                                if len(parts) == 2:
+                                    key = parts[0].strip()
+                                    value = parts[1].strip()
+                                    if value:
+                                        version_info[key] = value
+
+                        if version_info.get("WindowsProductName"):
+                            product_name = version_info["WindowsProductName"]
+                            # Check if it's a supported version
+                            if "Windows 10" in product_name or "Windows 11" in product_name:
+                                vulnerability_info["Windows Support Status"] = "Supported"
+                            elif "Windows 7" in product_name or "Windows 8" in product_name or "Windows Server 2012" in product_name:
+                                vulnerability_info["Windows Support Status"] = "End of Life - Security Risk"
+                            else:
+                                vulnerability_info["Windows Support Status"] = "Unknown"
+                except Exception:
+                    pass
+
+                # Check for firewall status
+                try:
+                    result = subprocess.run(
+                        ["netsh", "advfirewall", "show", "allprofiles"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        firewall_profiles = {}
+                        for line in result.stdout.split('\n'):
+                            if 'State' in line:
+                                parts = line.strip().split()
+                                if len(parts) >= 3:
+                                    profile = parts[0]
+                                    state = parts[2]
+                                    firewall_profiles[profile] = state
+                        if firewall_profiles:
+                            vulnerability_info["Windows Firewall"] = firewall_profiles
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        self.report_data["vulnerabilities"] = vulnerability_info
+
+    def collect_network_info(self):
+        """Collect network information"""
+        import psutil
+        network_info = {}
+
+        # Get network interfaces
+        interfaces = {}
+        for interface, addrs in psutil.net_if_addrs().items():
+            interface_info = {"IP Addresses": []}
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    interface_info["IP Addresses"].append({
+                        "Address": addr.address,
+                        "Netmask": addr.netmask,
+                        "Broadcast": addr.broadcast
+                    })
+                elif addr.family == socket.AF_INET6:
+                    interface_info["IPv6"] = addr.address
+                elif addr.family == psutil.AF_LINK:
+                    interface_info["MAC Address"] = addr.address
+            interfaces[interface] = interface_info
+
+        # Get network statistics
+        net_io = psutil.net_io_counters()
+        network_stats = {
+            "Bytes Sent": f"{net_io.bytes_sent / (1024 ** 3):.2f} GB",
+            "Bytes Received": f"{net_io.bytes_recv / (1024 ** 3):.2f} GB",
+            "Packets Sent": f"{net_io.packets_sent:,}",
+            "Packets Received": f"{net_io.packets_recv:,}",
+            "Errin": f"{net_io.errin}",
+            "Errout": f"{net_io.errout}",
+            "Dropin": f"{net_io.dropin}",
+            "Dropout": f"{net_io.dropout}"
+        }
+
+        # Get active connections
+        connections = []
+        try:
+            for conn in psutil.net_connections():
+                if conn.status == 'ESTABLISHED':
+                    connections.append({
+                        "Local Address": f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else "N/A",
+                        "Remote Address": f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else "N/A",
+                        "Status": conn.status,
+                        "PID": conn.pid
+                    })
+        except Exception:
+            pass
+
+        # Get DNS servers
+        dns_servers = self._get_dns_servers()
+
+        network_info = {
+            "Interfaces": interfaces,
+            "Statistics": network_stats,
+            "Active Connections": connections[:20],  # Top 20 connections
+            "DNS Servers": dns_servers
+        }
+
+        self.report_data["network"] = network_info
+
+    def _get_dns_servers(self):
+        """Get DNS server information"""
+        try:
+            if platform.system() == "Windows":
+                commands = [
+                    ["nslookup", "localhost"],
+                    ["ipconfig", "/all"],
+                    ["powershell", "Get-DnsClientServerAddress | Select-Object ServerAddresses | Format-List"]
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            if "nslookup" in cmd[0]:
+                                servers = re.findall(r"Server:\s*(.+)", result.stdout)
+                                if servers:
+                                    return servers
+                            else:
+                                # Parse DNS servers from ipconfig
+                                dns_servers = re.findall(r"DNS Servers[\.:\s]+(.+)", result.stdout)
+                                if dns_servers:
+                                    return [dns.strip() for dns in dns_servers if dns.strip()]
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        continue
+            else:
+                with open("/etc/resolv.conf", "r") as f:
+                    content = f.read()
+                    servers = re.findall(r"nameserver\s+(.+)", content)
+                    return servers if servers else ["Could not determine"]
+        except Exception:
+            pass
+        return ["Could not determine"]
+
+    def collect_security_info(self):
+        """Collect security-related information"""
+        security_info = {}
+
+        try:
+            if platform.system() == "Windows":
+                # Get Windows Defender status
+                try:
+                    commands = [
+                        ["powershell",
+                         "Get-MpComputerStatus | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled, NISEnabled, RealTimeProtectionEnabled, QuickScanAge, FullScanAge"],
+                        ["powershell", "Get-MpPreference | Select-Object DisableRealtimeMonitoring"],
+                        ["wmic", "/namespace:\\\\root\\securitycenter2", "path", "antivirusproduct", "get",
+                         "displayName", "/format:list"]
+                    ]
+
+                    for cmd in commands:
+                        try:
+                            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                    creationflags=CREATE_NO_WINDOW)
+                            if result.returncode == 0:
+                                defender_status = {}
+                                for line in result.stdout.split('\n'):
+                                    if ':' in line and not line.startswith('-'):
+                                        parts = line.split(':', 1)
+                                        if len(parts) == 2:
+                                            key = parts[0].strip()
+                                            value = parts[1].strip()
+                                            if value:
+                                                defender_status[key] = value
+                                if defender_status:
+                                    security_info["Windows Defender"] = defender_status
+                                    break
+                        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                            continue
+                except Exception:
+                    security_info["Windows Defender"] = "Status not available"
+
+                # Get Windows Firewall status
+                try:
+                    result = subprocess.run(
+                        ["netsh", "advfirewall", "show", "allprofiles"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        firewall_status = {}
+                        for line in result.stdout.split('\n'):
+                            if 'State' in line:
+                                parts = line.strip().split()
+                                if len(parts) >= 3:
+                                    profile = parts[0]
+                                    state = parts[2]
+                                    firewall_status[profile] = state
+                        security_info["Windows Firewall"] = firewall_status
+                except Exception:
+                    security_info["Windows Firewall"] = "Status not available"
+
+                # Get UAC status
+                try:
+                    result = subprocess.run(
+                        ["reg", "query", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "/v",
+                         "EnableLUA"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        uac_enabled = "0x1" in result.stdout
+                        security_info["User Account Control"] = "Enabled" if uac_enabled else "Disabled"
+                except Exception:
+                    security_info["User Account Control"] = "Status not available"
+            else:
+                security_info["Note"] = "Security software detection not implemented for this OS"
+        except Exception as e:
+            security_info["Error"] = f"Could not retrieve security information: {str(e)}"
+
+        self.report_data["security"] = security_info
+
+    def collect_user_info(self):
+        """Collect user account information"""
+        user_info = {}
+
+        try:
+            if platform.system() == "Windows":
+                # Get user accounts
+                try:
+                    result = subprocess.run(
+                        ["net", "user"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        users = []
+                        lines = result.stdout.split('\n')
+                        for line in lines:
+                            if line.strip() and not line.startswith('-') and not line.startswith('The command'):
+                                users.append(line.strip())
+                        user_info["User Accounts"] = users
+                except Exception:
+                    pass
+
+                # Get current user details
+                current_user = os.environ.get("USERNAME", "Unknown")
+                user_info["Current User"] = current_user
+
+                # Get user groups
+                try:
+                    result = subprocess.run(
+                        ["net", "user", current_user],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        groups = []
+                        for line in result.stdout.split('\n'):
+                            if "Local Group Memberships" in line:
+                                groups_line = line.split('*', 1)[1].strip()
+                                groups = [g.strip() for g in groups_line.split() if g.strip()]
+                                break
+                        user_info["User Groups"] = groups
+                except Exception:
+                    pass
+            else:
+                # For Linux/Mac, get users from /etc/passwd
+                if os.path.exists("/etc/passwd"):
+                    users = []
+                    with open("/etc/passwd", "r") as f:
+                        for line in f:
+                            if not line.startswith("#"):
+                                parts = line.split(":")
+                                if len(parts) >= 1:
+                                    users.append(parts[0])
+                    user_info["User Accounts"] = users
+
+                user_info["Current User"] = os.environ.get("USER", "Unknown")
+        except Exception as e:
+            user_info["Error"] = f"Could not retrieve user information: {str(e)}"
+
+        self.report_data["users"] = user_info
+
+    def collect_environment_info(self):
+        """Collect environment variables"""
+        self.report_data["environment"] = dict(os.environ)
+
+    def collect_process_info(self):
+        """Collect running processes"""
+        import psutil
+        processes = []
+
+        try:
+            for proc in psutil.process_iter(
+                    ['pid', 'name', 'username', 'cpu_percent', 'memory_percent', 'memory_info', 'create_time']):
+                try:
+                    create_time = datetime.fromtimestamp(proc.info['create_time']).strftime(
+                        "%Y-%m-%d %H:%M:%S")
+                    memory_mb = proc.info['memory_info'].rss / (1024 * 1024) if proc.info['memory_info'] else 0
+
+                    processes.append({
+                        "PID": proc.info['pid'],
+                        "Name": proc.info['name'],
+                        "User": proc.info['username'],
+                        "CPU %": f"{proc.info['cpu_percent']:.1f}%",
+                        "Memory %": f"{proc.info['memory_percent']:.1f}%",
+                        "Memory (MB)": f"{memory_mb:.1f}",
+                        "Started": create_time
+                    })
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+        except Exception:
+            pass
+
+        # Sort by memory usage
+        processes.sort(key=lambda x: float(x["Memory %"].rstrip('%')), reverse=True)
+        self.report_data["processes"] = processes[:30]  # Top 30 processes
+
+    def collect_service_info(self):
+        """Collect system services"""
+        services = []
+
+        try:
+            if platform.system() == "Windows":
+                # Get Windows services
+                commands = [
+                    ["sc", "query", "type=", "service", "state=", "all"],
+                    ["powershell", "Get-Service | Select-Object Name,Status,StartType | Format-Table"]
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            lines = result.stdout.split('\n')
+                            current_service = {}
+                            for line in lines:
+                                if line.strip():
+                                    if "SERVICE_NAME:" in line:
+                                        if current_service:
+                                            services.append(current_service)
+                                        current_service = {"Name": line.split(":", 1)[1].strip()}
+                                    elif "DISPLAY_NAME:" in line:
+                                        current_service["Display Name"] = line.split(":", 1)[1].strip()
+                                    elif "TYPE" in line:
+                                        current_service["Type"] = line.split(":", 1)[1].strip()
+                                    elif "STATE" in line:
+                                        current_service["State"] = line.split(":", 1)[1].strip()
+                                    elif "START_TYPE" in line:
+                                        current_service["Start Type"] = line.split(":", 1)[1].strip()
+                            if current_service:
+                                services.append(current_service)
+                            if services:
+                                break
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        continue
+            else:
+                # For Linux/Mac, try to get systemd services
+                if platform.system() == "Linux":
+                    try:
+                        result = subprocess.run(
+                            ["systemctl", "list-units", "--type=service", "--no-pager"],
+                            capture_output=True, text=True, timeout=30,
+                            creationflags=CREATE_NO_WINDOW
+                        )
+                        if result.returncode == 0:
+                            lines = result.stdout.split('\n')
+                            for line in lines[1:]:  # Skip header
+                                if line.strip() and not line.startswith('UNIT'):
+                                    parts = line.split()
+                                    if len(parts) >= 4:
+                                        services.append({
+                                            "Name": parts[0],
+                                            "Load": parts[1],
+                                            "Active": parts[2],
+                                            "State": parts[3],
+                                            "Description": " ".join(parts[4:]) if len(parts) > 4 else ""
+                                        })
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                        pass
+        except Exception as e:
+            services.append({"Error": f"Could not retrieve service information: {str(e)}"})
+
+        self.report_data["services"] = services[:50]  # Top 50 services
+
+    def collect_device_info(self):
+        """Collect hardware devices with improved Windows support"""
+        devices = []
+
+        try:
+            if platform.system() == "Windows":
+                # Try multiple methods to get device information
+                commands = [
+                    ["wmic", "path", "win32_PnPEntity", "get", "name,deviceid,description,manufacturer",
+                     "/format:csv"],
+                    ["wmic", "path", "win32_PnPEntity", "get", "name,description", "/format:list"],
+                    ["powershell", "Get-PnpDevice | Select-Object FriendlyName,DeviceID,Status | Format-Table"],
+                    ["powershell",
+                     "Get-WmiObject -Class Win32_PnPEntity | Select-Object Name,DeviceID,Description,Manufacturer | Format-Table"],
+                    ["devcon", "list"]  # If devcon is available
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            lines = result.stdout.split('\n')
+                            for line in lines[1:]:  # Skip header
+                                if line.strip():
+                                    parts = line.split(',')
+                                    if len(parts) >= 5 and parts[1].strip():
+                                        devices.append({
+                                            "Name": parts[1].strip(),
+                                            "Description": parts[2].strip(),
+                                            "Manufacturer": parts[3].strip(),
+                                            "Device ID": parts[4].strip()
+                                        })
+                                    elif len(parts) >= 3 and parts[0].strip():
+                                        # Alternative format
+                                        devices.append({
+                                            "Name": parts[0].strip(),
+                                            "Description": parts[1].strip() if len(parts) > 1 else "",
+                                            "Manufacturer": parts[2].strip() if len(parts) > 2 else "",
+                                            "Device ID": "N/A"
+                                        })
+                                if devices:
+                                    break
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                        continue
+
+                # If still no devices, try to get basic device categories
+                if not devices:
+                    try:
+                        device_classes = [
+                            "win32_Processor",
+                            "win32_VideoController",
+                            "win32_SoundDevice",
+                            "win32_NetworkAdapter",
+                            "win32_DiskDrive",
+                            "win32_BaseBoard"
+                        ]
+
+                        for device_class in device_classes:
+                            try:
+                                result = subprocess.run(
+                                    ["wmic", "path", device_class, "get", "name,manufacturer", "/format:list"],
+                                    capture_output=True, text=True, timeout=10,
+                                    creationflags=CREATE_NO_WINDOW
+                                )
+                                if result.returncode == 0:
+                                    device_data = {}
+                                    for line in result.stdout.split('\n'):
+                                        if '=' in line:
+                                            key, value = line.split('=', 1)
+                                            device_data[key.strip()] = value.strip()
+
+                                    if device_data.get("Name"):
+                                        devices.append({
+                                            "Name": device_data["Name"],
+                                            "Description": device_class.split('_')[1],
+                                            "Manufacturer": device_data.get("Manufacturer", "Unknown"),
+                                            "Device ID": "N/A"
+                                        })
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+
+            else:
+                # For Linux/Mac, try to get devices from lspci
+                commands = [
+                    ["lspci", "-v"],
+                    ["lspci"],
+                    ["lsusb"]  # USB devices
+                ]
+
+                for cmd in commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                                creationflags=CREATE_NO_WINDOW)
+                        if result.returncode == 0:
+                            current_device = {}
+                            for line in result.stdout.split('\n'):
+                                if line.strip() and not line.startswith('\t'):
+                                    if current_device:
+                                        devices.append(current_device)
+                                    parts = line.split(':', 1)
+                                    if len(parts) >= 2:
+                                        current_device = {
+                                            "ID": parts[0].strip(),
+                                            "Name": parts[1].strip(),
+                                            "Description": cmd[0].upper()
+                                        }
+                                elif line.strip().startswith('\t') and current_device:
+                                    if "Subsystem:" in line:
+                                        current_device["Subsystem"] = line.split(':', 1)[1].strip()
+                            if current_device:
+                                devices.append(current_device)
+                            if devices:
+                                break
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                        continue
+        except Exception as e:
+            devices.append({"Error": f"Could not retrieve device information: {str(e)}"})
+
+        self.report_data["devices"] = devices[:100]  # Top 100 devices
+
+    def collect_performance_metrics(self):
+        """Collect performance metrics"""
+        import psutil
+        perf_data = {}
+
+        # CPU load average (Linux/Mac) or CPU usage history
+        if hasattr(psutil, 'getloadavg'):
+            perf_data["Load Average"] = psutil.getloadavg()
+
+        # Memory pressure
+        mem = psutil.virtual_memory()
+        perf_data["Memory Pressure"] = {
+            "Available": f"{mem.available / (1024 ** 3):.2f} GB",
+            "Percent Used": f"{mem.percent}%"
+        }
+
+        # Disk usage summary
+        disk_usage = {}
+        for partition in psutil.disk_partitions():
+            try:
+                usage = psutil.disk_usage(partition.mountpoint)
+                disk_usage[partition.device] = {
+                    "Used": f"{usage.percent}%",
+                    "Free": f"{usage.free / (1024 ** 3):.2f} GB"
+                }
+            except:
+                continue
+        perf_data["Disk Usage"] = disk_usage
+
+        self.report_data["performance"] = perf_data
+
+    def generate_html_report(self):
+        """Generate HTML report from collected data"""
+        html_content = """<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>PC System Report</title>
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #2c3e50;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    padding: 20px;
+                }
+
+                .container {
+                    max-width: 1400px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 20px;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                    overflow: hidden;
+                }
+
+                header {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 40px;
+                    text-align: center;
+                }
+
+                h1 {
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    margin-bottom: 10px;
+                    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+                }
+
+                .subtitle {
+                    font-size: 1.1rem;
+                    opacity: 0.9;
+                }
+
+                .summary-cards {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                    gap: 20px;
+                    padding: 30px;
+                    background: #f8f9fa;
+                }
+
+                .card {
+                    background: white;
+                    border-radius: 15px;
+                    padding: 25px;
+                    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+                    transition: transform 0.3s ease, box-shadow 0.3s ease;
+                }
+
+                .card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+                }
+
+                .card h3 {
+                    color: #667eea;
+                    font-size: 1.1rem;
+                    margin-bottom: 15px;
+                    display: flex;
+                    align-items: center;
+                }
+
+                .card h3::before {
+                    content: '';
+                    width: 4px;
+                    height: 20px;
+                    background: #667eea;
+                    margin-right: 10px;
+                    border-radius: 2px;
+                }
+
+                .card-value {
+                    font-size: 1.8rem;
+                    font-weight: 700;
+                    color: #2c3e50;
+                    margin-bottom: 5px;
+                }
+
+                .card-label {
+                    color: #7f8c8d;
+                    font-size: 0.9rem;
+                }
+
+                .content {
+                    padding: 30px;
+                }
+
+                .section {
+                    margin-bottom: 40px;
+                }
+
+                h2 {
+                    color: #2c3e50;
+                    font-size: 1.8rem;
+                    margin-bottom: 20px;
+                    padding-bottom: 10px;
+                    border-bottom: 3px solid #667eea;
+                    display: flex;
+                    align-items: center;
+                }
+
+                h2::before {
+                    content: '';
+                    width: 8px;
+                    height: 30px;
+                    background: #667eea;
+                    margin-right: 15px;
+                    border-radius: 4px;
+                }
+
+                h3 {
+                    color: #34495e;
+                    font-size: 1.3rem;
+                    margin-top: 25px;
+                    margin-bottom: 15px;
+                    padding-left: 15px;
+                    border-left: 3px solid #667eea;
+                }
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 20px;
+                    background: white;
+                    border-radius: 10px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+                }
+
+                th, td {
+                    padding: 15px;
+                    text-align: left;
+                    border-bottom: 1px solid #ecf0f1;
+                }
+
+                th {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    font-size: 0.85rem;
+                    letter-spacing: 0.5px;
+                }
+
+                tr:nth-child(even) {
+                    background: #f8f9fa;
+                }
+
+                tr:hover {
+                    background: #e8f4fd;
+                    transition: background 0.3s ease;
+                }
+
+                .key {
+                    font-weight: 600;
+                    color: #2c3e50;
+                    width: 35%;
+                }
+
+                .value {
+                    color: #34495e;
+                    word-break: break-word;
+                }
+
+                .nested-table {
+                    margin-left: 20px;
+                    width: calc(100% - 20px);
+                    margin-top: 10px;
+                }
+
+                .collapsible {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    cursor: pointer;
+                    padding: 18px 25px;
+                    width: 100%;
+                    border: none;
+                    text-align: left;
+                    outline: none;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    border-radius: 10px;
+                    margin-bottom: 10px;
+                    transition: all 0.3s ease;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .collapsible:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+                }
+
+                .collapsible::after {
+                    content: '+';
+                    font-size: 1.5rem;
+                    transition: transform 0.3s ease;
+                }
+
+                .collapsible.active::after {
+                    transform: rotate(45deg);
+                }
+
+                .content-collapsible {
+                    padding: 0;
+                    display: none;
+                    overflow: hidden;
+                    background: white;
+                    margin-bottom: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+                }
+
+                .progress-bar {
+                    width: 100%;
+                    background-color: #ecf0f1;
+                    border-radius: 10px;
+                    height: 25px;
+                    margin-top: 8px;
+                    overflow: hidden;
+                }
+
+                .progress {
+                    height: 100%;
+                    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 10px;
+                    text-align: center;
+                    color: white;
+                    line-height: 25px;
+                    font-weight: 600;
+                    font-size: 0.9rem;
+                    transition: width 0.5s ease;
+                }
+
+                .badge {
+                    display: inline-block;
+                    padding: 4px 12px;
+                    background: #667eea;
+                    color: white;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    margin-left: 10px;
+                }
+
+                .badge.success {
+                    background: #27ae60;
+                }
+
+                .badge.warning {
+                    background: #f39c12;
+                }
+
+                .badge.danger {
+                    background: #e74c3c;
+                }
+
+                .alert {
+                    padding: 15px;
+                    margin-bottom: 20px;
+                    border-radius: 10px;
+                    display: flex;
+                    align-items: center;
+                }
+
+                .alert.danger {
+                    background-color: #fdecea;
+                    border-left: 5px solid #e74c3c;
+                    color: #e74c3c;
+                }
+
+                .alert.warning {
+                    background-color: #fef9e7;
+                    border-left: 5px solid #f39c12;
+                    color: #f39c12;
+                }
+
+                .alert.success {
+                    background-color: #eafaf1;
+                    border-left: 5px solid #27ae60;
+                    color: #27ae60;
+                }
+
+                .alert-icon {
+                    margin-right: 15px;
+                    font-size: 1.5rem;
+                }
+
+                footer {
+                    background: #2c3e50;
+                    color: white;
+                    text-align: center;
+                    padding: 30px;
+                    font-size: 0.9rem;
+                }
+
+                .highlight {
+                    background: linear-gradient(120deg, #a8edea 0%, #fed6e3 100%);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-weight: 600;
+                }
+
+                .startup-enabled {
+                    color: #27ae60;
+                    font-weight: 600;
+                }
+
+                .startup-disabled {
+                    color: #e74c3c;
+                    font-weight: 600;
+                }
+
+                @media (max-width: 768px) {
+                    .container {
+                        border-radius: 0;
+                    }
+
+                    h1 {
+                        font-size: 2rem;
+                    }
+
+                    .summary-cards {
+                        grid-template-columns: 1fr;
+                        padding: 20px;
+                    }
+
+                    .content {
+                        padding: 20px;
+                    }
+
+                    table {
+                        font-size: 0.9rem;
+                    }
+
+                    th, td {
+                        padding: 10px;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <header>
+                    <h1>PC System Report</h1>
+                    <p class="subtitle">Generated on """ + _html.escape(str(self.report_data["system_info"]["Report Generated"])) + """</p>
+                </header>
+
+                <div class="summary-cards">
+                    <div class="card">
+                        <h3>System</h3>
+                        <div class="card-value">""" + _html.escape(str(self.report_data["system_info"]["Operating System"])) + """</div>
+                        <div class="card-label">Operating System</div>
+                    </div>
+                    <div class="card">
+                        <h3>Processor</h3>
+                        <div class="card-value">""" + _html.escape(str(self.report_data["hardware"]["CPU"]["Total Cores"])) + """</div>
+                        <div class="card-label">CPU Cores</div>
+                    </div>
+                    <div class="card">
+                        <h3>Memory</h3>
+                        <div class="card-value">""" + _html.escape(str(self.report_data["hardware"]["Memory"]["Total Memory"])) + """</div>
+                        <div class="card-label">Total RAM</div>
+                    </div>
+                    <div class="card">
+                        <h3>Uptime</h3>
+                        <div class="card-value">""" + _html.escape(str(self.report_data["system_info"]["System Uptime"]).split(',')[0]) + """</div>
+                        <div class="card-label">System Running</div>
+                    </div>
+                </div>
+
+                <div class="content">
+                    """ + self._generate_security_alerts() + """
+
+                    <div class="section">
+                        <h2>System Information</h2>
+                        <table>
+                            """ + self._generate_dict_table(self.report_data["system_info"]) + """
+                        </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>Hardware Information</h2>
+                        """ + self._generate_hardware_tables() + """
+                    </div>
+
+                    <div class="section">
+                        <h2>Software Information <span class="badge">""" + str(len(self.report_data["software"])) + """</span></h2>
+                        <button type="button" class="collapsible">View Installed Software</button>
+                        <div class="content-collapsible">
+                            <table>
+                                """ + self._generate_dict_table(self.report_data["software"]) + """
+                            </table>
+                        </div>
+                    </div>
+
+                    """ + self._generate_updates_section() + """
+
+                    <div class="section">
+                        <h2>Security Vulnerabilities</h2>
+                        """ + self._generate_vulnerability_section() + """
+                    </div>
+
+                    <div class="section">
+                        <h2>Network Information</h2>
+                        """ + self._generate_network_tables() + """
+                    </div>
+
+                    <div class="section">
+                        <h2>Security Information</h2>
+                        <table>
+                            """ + self._generate_security_table(self.report_data["security"]) + """
+                        </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>User Information</h2>
+                        <table>
+                            """ + self._generate_users_table(self.report_data["users"]) + """
+                        </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>Startup Items <span class="badge">""" + str(self._count_startup_items()) + """</span></h2>
+                        <button type="button" class="collapsible">View Startup Items</button>
+                        <div class="content-collapsible">
+                            """ + self._generate_startup_items_table() + """
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Running Processes <span class="badge">""" + str(len(self.report_data["processes"])) + """</span></h2>
+                        <table>
+                            """ + self._generate_processes_table(self.report_data["processes"]) + """
+                        </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>System Services <span class="badge">""" + str(len(self.report_data["services"])) + """</span></h2>
+                        <button type="button" class="collapsible">View System Services</button>
+                        <div class="content-collapsible">
+                            <table>
+                                """ + self._generate_services_table(self.report_data["services"]) + """
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Hardware Devices <span class="badge">""" + str(len(self.report_data["devices"])) + """</span></h2>
+                        <button type="button" class="collapsible">View Hardware Devices</button>
+                        <div class="content-collapsible">
+                            <table>
+                                """ + self._generate_devices_table(self.report_data["devices"]) + """
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Environment Variables <span class="badge">""" + str(len(self.report_data["environment"])) + """</span></h2>
+                        <button type="button" class="collapsible">View Environment Variables</button>
+                        <div class="content-collapsible">
+                            <table>
+                                """ + self._generate_dict_table(self.report_data["environment"]) + """
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <footer>
+                    <p>PC Reporter - Comprehensive System Analysis Tool</p>
+                    <p>Report generated on """ + self.report_data["system_info"]["Report Generated"] + """</p>
+                </footer>
+            </div>
+
+            <script>
+                var coll = document.getElementsByClassName("collapsible");
+                var i;
+
+                for (i = 0; i < coll.length; i++) {
+                    coll[i].addEventListener("click", function() {
+                        this.classList.toggle("active");
+                        var content = this.nextElementSibling;
+                        if (content.style.display === "block") {
+                            content.style.display = "none";
+                        } else {
+                            content.style.display = "block";
+                        }
+                    });
+                }
+
+                // Add smooth scroll behavior
+                document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                    anchor.addEventListener("click", function (e) {
+                        e.preventDefault();
+                        document.querySelector(this.getAttribute("href")).scrollIntoView({
+                            behavior: "smooth"
+                        });
+                    });
+                });
+            </script>
+        </body>
+        </html>"""
+
+        # Write to file with UTF-8 encoding
+        try:
+            with open(self.report_file, "w", encoding='utf-8') as f:
+                f.write(html_content)
+        except Exception as e:
+            print(f"Error writing HTML file: {e}")
+            # Fallback: try without encoding parameter
+            with open(self.report_file, "w") as f:
+                f.write(html_content)
+
+        return self.report_file
+
+    def _count_startup_items(self):
+        """Count the total number of startup items"""
+        count = 0
+        if "startup_items" in self.report_data:
+            startup_data = self.report_data["startup_items"]
+            for category, items in startup_data.items():
+                if isinstance(items, dict):
+                    for subcategory, subitems in items.items():
+                        if isinstance(subitems, dict):
+                            count += len(subitems)
+        return count
+
+    def _generate_startup_items_table(self):
+        """Generate HTML table for startup items"""
+        if "startup_items" not in self.report_data or not self.report_data["startup_items"]:
+            return "<p>No startup items information available.</p>"
+
+        startup_data = self.report_data["startup_items"]
+        html = ""
+
+        for category, items in startup_data.items():
+            if isinstance(items, dict):
+                html += f"<h3>{_html.escape(str(category))}</h3>"
+                for subcategory, subitems in items.items():
+                    if isinstance(subitems, dict):
+                        html += f"<h4>{_html.escape(str(subcategory))}</h4>"
+                        html += "<table>"
+                        html += "<tr><th>Name</th><th>Value/Path</th><th>Status</th></tr>"
+                        for name, info in subitems.items():
+                            if isinstance(info, dict):
+                                value_path = info.get("Value", info.get("Path", "N/A"))
+                                status = info.get("Status", "Unknown")
+                                status_class = "startup-enabled" if status == "Enabled" else "startup-disabled" if status == "Disabled" else ""
+                                html += (f"<tr><td>{_html.escape(str(name))}</td>"
+                                         f"<td>{_html.escape(str(value_path))}</td>"
+                                         f"<td class='{status_class}'>{_html.escape(str(status))}</td></tr>")
+                        html += "</table>"
+
+        return html
+
+    def _generate_security_alerts(self):
+        """Generate security alerts based on vulnerability information"""
+        alerts = ""
+
+        if "vulnerabilities" in self.report_data and self.report_data["vulnerabilities"]:
+            vuln = self.report_data["vulnerabilities"]
+
+            # Check for pending updates
+            if vuln.get("Status") == "Updates Available":
+                alerts += """
+                        <div class="alert warning">
+                            <div class="alert-icon">âš ï¸</div>
+                            <div>
+                                <strong>Security Updates Available</strong><br>
+                                Your system has pending security updates. Please install them as soon as possible to protect against vulnerabilities.
+                            </div>
+                        </div>
+                        """
+
+            # Check for Windows support status
+            if vuln.get("Windows Support Status") == "End of Life - Security Risk":
+                alerts += """
+                        <div class="alert danger">
+                            <div class="alert-icon">ðŸ"´</div>
+                            <div>
+                                <strong>Unsupported Windows Version</strong><br>
+                                Your Windows version is no longer supported by Microsoft. This means you won't receive security updates and are at high risk. Consider upgrading to a supported version.
+                            </div>
+                        </div>
+                        """
+
+            # Check for Windows Defender status
+            if "Windows Defender" in vuln:
+                defender = vuln["Windows Defender"]
+                if isinstance(defender, dict):
+                    if defender.get("RealTimeProtectionEnabled") == "False":
+                        alerts += """
+                                <div class="alert danger">
+                                    <div class="alert-icon">ðŸ"´</div>
+                                    <div>
+                                        <strong>Real-time Protection Disabled</strong><br>
+                                        Windows Defender real-time protection is disabled. Your system is not protected against malware in real-time.
+                                    </div>
+                                </div>
+                                """
+                    elif defender.get("AntivirusEnabled") == "False":
+                        alerts += """
+                                <div class="alert danger">
+                                    <div class="alert-icon">ðŸ"´</div>
+                                    <div>
+                                        <strong>Antivirus Disabled</strong><br>
+                                        Windows Defender antivirus is disabled. Your system is not protected against viruses and malware.
+                                    </div>
+                                </div>
+                                """
+
+            # Check for firewall status
+            if "Windows Firewall" in vuln:
+                firewall = vuln["Windows Firewall"]
+                if isinstance(firewall, dict):
+                    for profile, status in firewall.items():
+                        if status.lower() == "off":
+                            alerts += f"""
+                                    <div class="alert danger">
+                                        <div class="alert-icon">ðŸ"´</div>
+                                        <div>
+                                            <strong>Firewall Disabled</strong><br>
+                                            Windows Firewall is turned off for the {profile} profile. Your system may be vulnerable to network attacks.
+                                        </div>
+                                    </div>
+                                    """
+                            break  # Only show one firewall alert
+
+        return alerts
+
+    def _generate_vulnerability_section(self):
+        """Generate HTML for the vulnerability section"""
+        if "vulnerabilities" not in self.report_data or not self.report_data["vulnerabilities"]:
+            return "<p>No vulnerability information available.</p>"
+
+        vuln = self.report_data["vulnerabilities"]
+        rows = ""
+
+        for key, value in vuln.items():
+            if key == "Windows Defender" and isinstance(value, dict):
+                rows += f"<tr><td class='key'>{key}</td><td class='value'><table class='nested-table'>"
+                for sub_key, sub_value in value.items():
+                    status = "success" if "True" in str(sub_value) else "danger" if "False" in str(
+                        sub_value) else ""
+                    badge = f" <span class='badge {status}'>{sub_value}</span>" if status else f" {sub_value}"
+                    rows += f"<tr><td class='key'>{sub_key}</td><td class='value'>{badge}</td></tr>"
+                rows += "</table></td></tr>"
+            elif key == "Windows Firewall" and isinstance(value, dict):
+                rows += f"<tr><td class='key'>{key}</td><td class='value'><table class='nested-table'>"
+                for profile, status in value.items():
+                    status_class = "success" if status.lower() == "on" else "danger" if status.lower() == "off" else ""
+                    badge = f" <span class='badge {status_class}'>{status}</span>" if status_class else f" {status}"
+                    rows += f"<tr><td class='key'>{profile}</td><td class='value'>{badge}</td></tr>"
+                rows += "</table></td></tr>"
+            elif key == "Status":
+                status_class = "success" if value == "Up to Date" else "warning" if value == "Updates Available" else ""
+                badge = f" <span class='badge {status_class}'>{value}</span>" if status_class else f" {value}"
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>{badge}</td></tr>"
+            elif key == "Windows Support Status":
+                status_class = "success" if value == "Supported" else "danger" if "End of Life" in value else ""
+                badge = f" <span class='badge {status_class}'>{value}</span>" if status_class else f" {value}"
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>{badge}</td></tr>"
+            else:
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>{value}</td></tr>"
+
+        return f"<table>{rows}</table>"
+
+    def _generate_updates_section(self):
+        """Generate Windows updates section"""
+        if "updates" in self.report_data and self.report_data["updates"]:
+            return """
+                    <div class="section">
+                        <h2>Windows Updates <span class="badge">""" + str(len(self.report_data["updates"])) + """</span></h2>
+                        <button type="button" class="collapsible">View Recent Updates</button>
+                        <div class="content-collapsible">
+                            <table>
+                                """ + self._generate_updates_table(self.report_data["updates"]) + """
+                            </table>
+                        </div>
+                    </div>
+                    """
+        return ""
+
+    def _generate_updates_table(self, data):
+        """Generate HTML table for Windows updates"""
+        if isinstance(data, dict) and "Error" in data:
+            return f"<tr><td colspan='3'>{data['Error']}</td></tr>"
+
+        rows = "<tr><th>Hotfix ID</th><th>Installed On</th><th>Installed By</th></tr>"
+        for update in data:
+            rows += f"<tr><td>{update.get('Hotfix ID', '')}</td><td>{update.get('Installed On', '')}</td><td>{update.get('Installed By', '')}</td></tr>"
+
+        return rows
+
+    def _generate_hardware_tables(self):
+        """Generate HTML tables for hardware information"""
+        hardware_tables = ""
+        for category, data in self.report_data["hardware"].items():
+            if isinstance(data, dict):
+                hardware_tables += f"<h3>{category}</h3>"
+                if category == "Storage":
+                    hardware_tables += self._generate_storage_table(data)
+                elif category == "CPU" and "CPU Usage Per Core" in data:
+                    hardware_tables += self._generate_cpu_table(data)
+                else:
+                    hardware_tables += self._generate_dict_table(data)
+        return hardware_tables
+
+    def _generate_cpu_table(self, data):
+        """Generate HTML table for CPU information with per-core usage"""
+        rows = ""
+        for key, value in data.items():
+            if key == "CPU Usage Per Core":
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>"
+                for core, usage in value.items():
+                    rows += f"<div style='margin-bottom: 5px;'>Core {core}: <span class='highlight'>{usage}%</span></div>"
+                rows += "</td></tr>"
+            else:
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>{value}</td></tr>"
+        return rows
+
+    def _generate_network_tables(self):
+        """Generate HTML tables for network information"""
+        network_tables = ""
+        for category, data in self.report_data["network"].items():
+            if category == "Interfaces":
+                network_tables += "<h3>Network Interfaces</h3>"
+                network_tables += self._generate_interfaces_table(data)
+            elif category == "Active Connections":
+                network_tables += "<h3>Active Connections</h3>"
+                network_tables += self._generate_connections_table(data)
+            elif category == "DNS Servers":
+                network_tables += "<h3>DNS Servers</h3>"
+                network_tables += self._generate_list_table(data, "DNS Server")
+            else:
+                network_tables += f"<h3>{category}</h3>"
+                network_tables += self._generate_dict_table(data)
+        return network_tables
+
+    def _generate_list_table(self, data, label):
+        """Generate HTML table from list data"""
+        if not data:
+            return "<tr><td>No data available</td></tr>"
+
+        rows = ""
+        for item in data:
+            rows += f"<tr><td class='value'><div class='highlight'>{item}</div></td></tr>"
+
+        return rows
+
+    def _generate_connections_table(self, data):
+        """Generate HTML table for active connections"""
+        if not data:
+            return "<tr><td colspan='4'>No active connections</td></tr>"
+
+        rows = "<tr><th>Local Address</th><th>Remote Address</th><th>Status</th><th>PID</th></tr>"
+        for conn in data:
+            rows += f"<tr><td>{conn['Local Address']}</td><td>{conn['Remote Address']}</td><td>{conn['Status']}</td><td>{conn['PID']}</td></tr>"
+
+        return rows
+
+    def _generate_dict_table(self, data):
+        """Generate HTML table from dictionary data"""
+        if not data:
+            return "<tr><td colspan='2'>No data available</td></tr>"
+
+        rows = ""
+        for key, value in data.items():
+            if isinstance(value, dict):
+                rows += f"<tr><td class='key'>{_html.escape(str(key))}</td><td class='value'><table class='nested-table'>"
+                for sub_key, sub_value in value.items():
+                    rows += f"<tr><td class='key'>{_html.escape(str(sub_key))}</td><td class='value'>{_html.escape(str(sub_value))}</td></tr>"
+                rows += "</table></td></tr>"
+            else:
+                rows += f"<tr><td class='key'>{_html.escape(str(key))}</td><td class='value'>{_html.escape(str(value))}</td></tr>"
+
+        return rows
+
+    def _generate_storage_table(self, data):
+        """Generate HTML table for storage information"""
+        if not data:
+            return "<tr><td colspan='2'>No storage information available</td></tr>"
+
+        rows = ""
+        for drive, info in data.items():
+            rows += f"<tr><td class='key'>{drive}</td><td class='value'><table class='nested-table'>"
+            for key, value in info.items():
+                if key == "Percentage":
+                    # Add a progress bar for percentage
+                    rows += f"<tr><td class='key'>{key}</td><td class='value'>"
+                    rows += f"<div class='progress-bar'><div class='progress' style='width:{value}'>{value}</div></div>"
+                    rows += "</td></tr>"
+                else:
+                    rows += f"<tr><td class='key'>{key}</td><td class='value'>{value}</td></tr>"
+            rows += "</table></td></tr>"
+
+        return rows
+
+    def _generate_interfaces_table(self, data):
+        """Generate HTML table for network interfaces"""
+        if not data:
+            return "<tr><td colspan='2'>No network interface information available</td></tr>"
+
+        rows = ""
+        for interface, info in data.items():
+            rows += f"<tr><td class='key'>{interface}</td><td class='value'><table class='nested-table'>"
+            for key, value in info.items():
+                if key == "IP Addresses" and isinstance(value, list):
+                    rows += f"<tr><td class='key'>{key}</td><td class='value'>"
+                    for ip in value:
+                        rows += f"<div class='highlight'>{ip['Address']}</div> Netmask: {ip['Netmask']}<br>"
+                    rows += "</td></tr>"
+                else:
+                    rows += f"<tr><td class='key'>{key}</td><td class='value'>{value}</td></tr>"
+            rows += "</table></td></tr>"
+
+        return rows
+
+    def _generate_security_table(self, data):
+        """Generate HTML table for security information"""
+        if not data:
+            return "<tr><td colspan='2'>No security information available</td></tr>"
+
+        rows = ""
+        for key, value in data.items():
+            if isinstance(value, dict):
+                rows += f"<tr><td class='key'>{key}</td><td class='value'><table class='nested-table'>"
+                for sub_key, sub_value in value.items():
+                    status = "success" if "Enabled" in str(sub_value) or "On" in str(
+                        sub_value) else "danger" if "Disabled" in str(sub_value) or "Off" in str(sub_value) else ""
+                    badge = f" <span class='badge {status}'>{sub_value}</span>" if status else f" {sub_value}"
+                    rows += f"<tr><td class='key'>{sub_key}</td><td class='value'>{badge}</td></tr>"
+                rows += "</table></td></tr>"
+            else:
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>{value}</td></tr>"
+
+        return rows
+
+    def _generate_users_table(self, data):
+        """Generate HTML table for user information"""
+        if not data:
+            return "<tr><td colspan='2'>No user information available</td></tr>"
+
+        rows = ""
+        for key, value in data.items():
+            if key == "User Accounts" and isinstance(value, list):
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>"
+                for user in value:
+                    rows += f"<div class='highlight'>{user}</div>"
+                rows += "</td></tr>"
+            elif key == "User Groups" and isinstance(value, list):
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>"
+                for group in value:
+                    rows += f"<span class='badge'>{group}</span> "
+                rows += "</td></tr>"
+            else:
+                rows += f"<tr><td class='key'>{key}</td><td class='value'>{value}</td></tr>"
+
+        return rows
+
+    def _generate_processes_table(self, data):
+        """Generate HTML table for processes"""
+        if not data:
+            return "<tr><td colspan='6'>No process information available</td></tr>"
+
+        rows = "<tr><th>PID</th><th>Name</th><th>User</th><th>CPU %</th><th>Memory %</th><th>Memory (MB)</th><th>Started</th></tr>"
+        for process in data:
+            rows += f"<tr><td>{process['PID']}</td><td>{process['Name']}</td><td>{process['User']}</td><td>{process['CPU %']}</td><td>{process['Memory %']}</td><td>{process['Memory (MB)']}</td><td>{process['Started']}</td></tr>"
+
+        return rows
+
+    def _generate_services_table(self, data):
+        """Generate HTML table for services"""
+        if not data:
+            return "<tr><td colspan='5'>No service information available</td></tr>"
+
+        # Determine headers based on the first service
+        if data and isinstance(data[0], dict):
+            headers = list(data[0].keys())
+            rows = "<tr>" + "".join([f"<th>{h}</th>" for h in headers]) + "</tr>"
+
+            for service in data:
+                rows += "<tr>"
+                for header in headers:
+                    value = service.get(header, '')
+                    if header == "State":
+                        if "RUNNING" in value:
+                            value = f"<span class='badge success'>{value}</span>"
+                        elif "STOPPED" in value:
+                            value = f"<span class='badge danger'>{value}</span>"
+                        else:
+                            value = f"<span class='badge warning'>{value}</span>"
+                    rows += f"<td>{value}</td>"
+                rows += "</tr>"
+
+            return rows
+
+        return "<tr><td colspan='5'>Invalid service data format</td></tr>"
+
+    def _generate_devices_table(self, data):
+        """Generate HTML table for devices"""
+        if not data:
+            return "<tr><td colspan='4'>No device information available</td></tr>"
+
+        rows = "<tr><th>Name</th><th>Description</th><th>Manufacturer</th><th>Device ID</th></tr>"
+        for device in data:
+            if "Error" in device:
+                rows += f"<tr><td colspan='4'>{device['Error']}</td></tr>"
+            else:
+                rows += f"<tr><td>{device.get('Name', '')}</td><td>{device.get('Description', '')}</td><td>{device.get('Manufacturer', '')}</td><td>{device.get('Device ID', '')}</td></tr>"
+
+        return rows
+
+
+class SystemCleanerGUI:
+    def __init__(self, root, theme=HOLOGRAPHIC_THEME):
+        try:
+            self.root = root
+            self.theme = theme
+            self.current_theme = 'holographic'
+            self.widgets = []
+            self.widget_fonts = {}  # Store original font settings for each widget
+            self.font_size_factor = 1.0  # Default font size factor
+            self._cosmic_animation_job = None
+            self._cosmic_bg_busy = False
+
+            # Load font size preference if it exists
+            try:
+                _fp = _get_pref_path("font_size_pref.json")
+                if os.path.exists(_fp):
+                    with open(_fp, "r") as f:
+                        pref = json.load(f)
+                        self.font_size_factor = pref.get("font_size_factor", 1.0)
+            except (json.JSONDecodeError, OSError, KeyError):
+                pass
+
+            self.root.title("WinMend")
+            self.root.geometry("1200x1050")
+            self.root.minsize(960, 780)
+            self.root.resizable(True, True)
+
+            # Set window icon
+            try:
+                base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+                ico_path = os.path.join(base, "icon.ico")
+                if os.path.exists(ico_path):
+                    self.root.iconbitmap(default=ico_path)
+            except Exception as e:
+                print(f"Failed to load icon: {e}")
+
+
+            # Apply theme to root
+            self.root.configure(bg=self.theme['bg'])
+
+            # Create menu
+            self.create_menu()
+
+            # Task progress tracking
+            self.task_progress = {}
+            self.total_tasks = 0
+            self.completed_tasks = 0
+            self.start_time = None
+            self.progress_active = False
+            self._admin_pulse_phase = 0.0
+            self._note_pulse_phase = 0.0
+            self._clock_job = None
+            self._animation_job = None
+
+            # Create GUI elements
+            self.create_widgets()
+
+            # Check if running as admin
+            self.admin_status = self.is_admin()
+            self.update_admin_status()
+
+            # Queue for thread communication
+            self.queue = queue.Queue()
+
+        except Exception as e:
+            messagebox.showerror("Initialization Error", f"Failed to initialize GUI: {str(e)}")
+            sys.exit(1)
+
+    def create_menu(self):
+        """Create the application menu"""
+        menubar = Menu(self.root, bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
+        self.root.config(menu=menubar)
+
+        # Keep dark_mode_var for backwards compatibility
+        self.dark_mode_var = tk.BooleanVar(value=True)
+
+        # Font size menu
+        font_menu = Menu(menubar, tearoff=0, bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
+        menubar.add_cascade(label="Change Font Size", menu=font_menu)
+
+        # Font size options
+        self.font_size_var = tk.IntVar(value=10)  # Default to medium
+        font_menu.add_radiobutton(
+            label="Small",
+            variable=self.font_size_var,
+            value=8,
+            command=lambda: self.change_font_size(8)
+        )
+        font_menu.add_radiobutton(
+            label="Medium",
+            variable=self.font_size_var,
+            value=10,
+            command=lambda: self.change_font_size(10)
+        )
+        font_menu.add_radiobutton(
+            label="Large",
+            variable=self.font_size_var,
+            value=12,
+            command=lambda: self.change_font_size(12)
+        )
+        font_menu.add_radiobutton(
+            label="Extra Large",
+            variable=self.font_size_var,
+            value=14,
+            command=lambda: self.change_font_size(14)
+        )
+
+        # Register menu for theme updates
+        self.widgets.append(('menu', menubar))
+        self.widgets.append(('menu', font_menu))
+
+    def change_font_size(self, size):
+        """Change the font size of all widgets in the GUI"""
+        # Calculate the factor based on the default size (10)
+        self.font_size_factor = size / 10.0
+
+        # Save the preference
+        try:
+            with open(_get_pref_path("font_size_pref.json"), "w") as f:
+                json.dump({"font_size_factor": self.font_size_factor}, f)
+        except:
+            pass
+
+        # Update all widget fonts
+        self.update_all_fonts()
+
+    def update_all_fonts(self):
+        """Update the font size of all registered widgets"""
+        for widget, original_font in self.widget_fonts.items():
+            if original_font:
+                # original_font is a tuple: (family, size, ...)
+                family = original_font[0]
+                base_size = original_font[1]
+                # The rest of the tuple (if any) are the style options
+                style = original_font[2:] if len(original_font) > 2 else ()
+                new_size = int(base_size * self.font_size_factor)
+                new_font = (family, new_size) + style
+                try:
+                    widget.config(font=new_font)
+                except:
+                    pass  # Ignore errors
+
+    def toggle_dark_mode(self):
+        """Toggle between light and dark mode (legacy compatibility)"""
+        if self.dark_mode_var.get():
+            self.switch_theme('dark')
+        else:
+            self.switch_theme('light')
+
+    def switch_theme(self, theme_name):
+        """Switch to a specific theme by name"""
+        theme_map = {
+            'holographic': HOLOGRAPHIC_THEME
+        }
+
+        if theme_name in theme_map:
+            self.current_theme = theme_name
+            self.theme = theme_map[theme_name]
+            # Update dark_mode_var for backwards compatibility
+            self.dark_mode_var.set(theme_name != 'light')
+        else:
+            return
+
+        # Apply theme to all widgets
+        self.apply_theme()
+
+        # Update progress bar style
+        self.style.configure(
+            "Horizontal.TProgressbar",
+            troughcolor=self.theme['surface_alt'],
+            background=self.theme['primary'],
+            bordercolor=self.theme['surface_alt'],
+            lightcolor=self.theme['primary'],
+            darkcolor=self.theme['primary']
+        )
+
+        # Save theme preference
+        try:
+            with open(_get_pref_path("theme_pref.json"), "w") as f:
+                json.dump({"theme": theme_name}, f)
+        except:
+            pass
+
+    def apply_theme(self):
+        """Apply the current theme to all registered widgets"""
+        for widget_type, widget in self.widgets:
+            try:
+                if widget_type == 'label':
+                    if hasattr(self, 'admin_label') and widget == self.admin_label:
+                        self.update_admin_status()
+                    elif hasattr(self, 'note_label') and widget == self.note_label:
+                        pass  # _update_reboot_notice() owns this label's colours
+                    elif hasattr(self, 'header_frame') and widget.winfo_parent() == str(self.header_frame):
+                        widget.config(bg=self.theme['header_bg'], fg=self.theme['header_fg'])
+                    else:
+                        try:
+                            widget.config(bg=widget.master.cget('bg'), fg=self.theme['label_fg'])
+                        except Exception:
+                            widget.config(bg=self.theme['bg'], fg=self.theme['label_fg'])
+                    if hasattr(self, 'checkbox_frame') and widget.master in [self.checkbox_frame, self.app_checkbox_frame, self.additional_checkbox_frame]:
+                        label_txt = str(widget.cget('text')).upper()
+                        if any(token in label_txt for token in ['CLEANUP', 'REPAIR', 'PERFORMANCE', 'NETWORK', 'SECURITY', 'UPDATES', 'UTILITIES']):
+                            widget.config(fg=self.theme['primary'])
+                elif widget_type == 'button':
+                    if hasattr(self, 'run_button') and widget == self.run_button:
+                        widget.config(bg=self.theme['button_bg'], fg=self.theme['button_fg'])
+                    elif hasattr(self, 'exit_button') and widget == self.exit_button:
+                        widget.config(bg=self.theme['button_secondary_bg'], fg=self.theme['button_secondary_fg'])
+                    else:
+                        widget.config(bg=self.theme['button_bg'], fg=self.theme['button_fg'])
+                elif widget_type == 'entry':
+                    if hasattr(self, 'smart_search_entry') and widget == self.smart_search_entry:
+                        widget.config(
+                            bg=self.theme['entry_bg'],
+                            fg=self.theme['entry_fg'],
+                            highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                            highlightcolor=self.theme.get('glass_glow', '#7FE4FF'),
+                            highlightthickness=1
+                        )
+                    else:
+                        widget.config(bg=self.theme['entry_bg'], fg=self.theme['entry_fg'])
+                elif widget_type == 'text':
+                    widget.config(bg=self.theme['surface'], fg=self.theme['text_fg'])
+                elif widget_type == 'log':
+                    widget.config(bg=self.theme['surface'], fg=self.theme['log_text_fg'])
+                elif widget_type == 'frame':
+                    # Special handling for frames that are "cards"
+                    if widget in [self.checkbox_frame, self.app_checkbox_frame, self.additional_checkbox_frame]:
+                        widget.config(bg=self.theme['surface'])
+                    elif hasattr(self, 'smart_search_frame') and widget == self.smart_search_frame:
+                        widget.config(
+                            bg=self.theme['surface'],
+                            highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                            highlightcolor=self.theme.get('glass_glow', '#7FE4FF'),
+                            highlightthickness=2
+                        )
+                    elif hasattr(self, 'button_frame') and widget == self.button_frame:
+                        widget.config(bg=self.theme['bg'], highlightthickness=0, bd=0)
+                    elif hasattr(self, 'header_frame') and widget == self.header_frame:
+                        widget.config(bg=self.theme['header_bg'])
+                    elif hasattr(self, 'left_frame') and widget == self.left_frame:
+                        widget.config(bg=self.theme['bg'])
+                    elif hasattr(self, 'right_frame') and widget == self.right_frame:
+                        widget.config(bg=self.theme['bg'])
+                    else:
+                        widget.config(bg=self.theme['bg'])
+                elif widget_type == 'labelframe':
+                    widget.config(bg=self.theme['surface'], fg=self.theme['primary'],
+                                  highlightbackground=self.theme['task_border'])
+                elif widget_type == 'checkbutton':
+                    widget.config(bg=self.theme['surface'], fg=self.theme['task_fg'],
+                                  selectcolor=self.theme['surface_alt'],
+                                  activebackground=self.theme['surface_alt'],
+                                  state=tk.NORMAL,
+                                  onvalue=True,
+                                  offvalue=False,
+                                  tristatevalue="__mixed__",
+                                  disabledforeground=self.theme['task_fg'])
+                elif widget_type == 'progress':
+                    widget.config(style="Horizontal.TProgressbar")
+                elif widget_type == 'menu':
+                    # For menus, we need to update the menu itself and its items
+                    widget.config(bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
+                    # Update menu items
+                    if isinstance(widget, Menu):
+                        for index in range(widget.index(tk.END) + 1):
+                            try:
+                                widget.entryconfig(index, bg=self.theme['menu_bg'], fg=self.theme['menu_fg'])
+                            except:
+                                pass
+            except Exception as e:
+                pass  # Silently ignore theme application errors
+
+        # Re-apply checkbutton hardening after any theme update
+        self._harden_checkbuttons()
+
+        # Update root window
+        self.root.configure(bg=self.theme['bg'])
+
+        # Update additional frames
+        if hasattr(self, 'left_frame'):
+            self.left_frame.configure(bg=self.theme['bg'])
+        if hasattr(self, 'right_frame'):
+            self.right_frame.configure(bg=self.theme['bg'])
+        if hasattr(self, 'scroll_canvas'):
+            self.scroll_canvas.configure(bg=self.theme['bg'])
+        if hasattr(self, 'columns_canvas'):
+            self.columns_canvas.configure(bg=self.theme['bg'])
+        if hasattr(self, 'nebula_canvas'):
+            self.nebula_canvas.configure(bg=self.theme['bg'])
+        if hasattr(self, 'header_bg_canvas'):
+            self.header_bg_canvas.configure(bg=self.theme['bg'])
+        if hasattr(self, 'columns_canvas'):
+            self._cosmic_bg_size = None
+            self._schedule_cosmic_background_refresh()
+        # Update header separator accent
+        if hasattr(self, 'header_separator'):
+            self.header_separator.configure(bg=self.theme['primary'])
+
+        # Update holographic header elements
+        for attr in ['monitor_frame', 'resource_frame']:
+            if hasattr(self, attr):
+                getattr(self, attr).configure(bg=self.theme['header_bg'])
+        if hasattr(self, 'clock_label'):
+            self.clock_label.configure(bg=self.theme['header_bg'], fg=self.theme['fg'])
+        # Update resource bar frames and labels
+        if hasattr(self, 'resource_frame'):
+            for child in self.resource_frame.winfo_children():
+                child.configure(bg=self.theme['header_bg'])
+                for grandchild in child.winfo_children():
+                    if isinstance(grandchild, tk.Label):
+                        grandchild.configure(bg=self.theme['header_bg'], fg=self.theme['label_fg_dim'])
+                    elif isinstance(grandchild, tk.Canvas):
+                        grandchild.configure(bg=self.theme['surface_alt'])
+        if hasattr(self, 'note_label'):
+            # Reset the guard so _update_reboot_notice re-evaluates after a
+            # theme change (wrapper bg must re-sync to new glass_tint).
+            self._last_reboot_notice_state = None
+            self._update_reboot_notice()
+        if hasattr(self, 'note_wrapper'):
+            # Keep the wrapper's bg in sync with the new theme directly,
+            # in case _update_reboot_notice guard skips due to unchanged state.
+            self.note_wrapper.configure(
+                bg=self.theme.get('glass_tint', self.theme.get('surface', '#162742'))
+            )
+        if hasattr(self, 'run_button'):
+            self.run_button.configure(highlightbackground=self.theme['glass_edge'])
+        if hasattr(self, 'exit_button'):
+            self.exit_button.configure(highlightbackground=self.theme['glass_edge'])
+        if hasattr(self, 'install_apps_button'):
+            self.install_apps_button.configure(highlightbackground=self.theme['glass_edge'])
+        self._apply_2090_design()
+        self._style_task_rows()
+        self._refresh_task_indicator_leds(force=True)
+
+    def create_widgets(self):
+        try:
+            # Header frame (alloy substrate style)
+            self.header_frame = tk.Frame(
+                self.root,
+                bg=self.theme['header_bg'],
+                height=98
+            )
+            self.header_frame.pack(fill=tk.X)
+            self.header_frame.pack_propagate(False)  # Keep fixed height
+            self.widgets.append(('frame', self.header_frame))
+
+            # Animated smoke layer for the top header region.
+            self.header_bg_canvas = tk.Canvas(self.header_frame, bg=self.theme['bg'], highlightthickness=0, bd=0)
+            self.header_bg_canvas.place(x=0, y=0, relwidth=1, relheight=1)
+            try:
+                self.root.tk.call("lower", self.header_bg_canvas._w)
+            except Exception:
+                pass
+
+            # Header separator -- holographic accent line
+            self.header_separator = tk.Frame(self.root, bg=self.theme['primary'], height=2)
+            self.header_separator.pack(fill=tk.X)
+            self.widgets.append(('frame', self.header_separator))
+
+            # Title row
+            title_font = ('Microsport Bold', 34)
+            self.title_label = tk.Label(
+                self.header_frame,
+                text="WinMend",
+                font=title_font,
+                bg=self.theme['header_bg'],
+                fg=self.theme['header_fg']
+            )
+            self.title_label.pack(side=tk.LEFT, padx=(20, 18), pady=18)
+            self.widgets.append(('label', self.title_label))
+            self.widget_fonts[self.title_label] = title_font
+
+            # â"€â"€ Resource monitor (right side of header) â"€â"€
+            self.monitor_frame = tk.Frame(self.header_frame, bg=self.theme['header_bg'])
+            self.monitor_frame.pack(side=tk.RIGHT, padx=20, pady=8)
+            self.widgets.append(('frame', self.monitor_frame))
+
+            # Resource bars (right of clock)
+            self.resource_frame = tk.Frame(self.monitor_frame, bg=self.theme['header_bg'])
+            self.resource_frame.pack(side=tk.RIGHT, pady=2)
+            self.widgets.append(('frame', self.resource_frame))
+
+            res_label_font = ('Bahnschrift Light', 8)
+            for res_name in ['CPU', 'RAM', 'GPU']:
+                row = tk.Frame(self.resource_frame, bg=self.theme['header_bg'])
+                row.pack(fill=tk.X, pady=1)
+                lbl = tk.Label(row, text=res_name, font=res_label_font,
+                               bg=self.theme['header_bg'], fg=self.theme['label_fg_dim'], width=4, anchor=tk.E)
+                lbl.pack(side=tk.LEFT)
+                canvas = tk.Canvas(row, width=100, height=6, bg=self.theme['surface_alt'],
+                                   highlightthickness=0, bd=0)
+                canvas.pack(side=tk.LEFT, padx=(4, 0))
+                setattr(self, f'_{res_name.lower()}_canvas', canvas)
+
+            # Clock display
+            clock_font = ('Bahnschrift Light', 26)
+            self.clock_label = tk.Label(
+                self.monitor_frame, text="--:--",
+                font=clock_font,
+                bg=self.theme['header_bg'],
+                fg=self.theme['fg']
+            )
+            self.clock_label.pack(side=tk.RIGHT, padx=(0, 16))
+            self.widgets.append(('label', self.clock_label))
+            self.widget_fonts[self.clock_label] = clock_font
+
+            # Scrollable container for all main content
+            self.scroll_canvas = tk.Canvas(self.root, bg=self.theme['bg'], highlightthickness=0)
+            self.scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.widgets.append(('canvas', self.scroll_canvas))
+
+            # Scrollbar for the canvas
+            def on_main_scrollbar(*args):
+                self.scroll_canvas.yview(*args)
+
+            self.main_scrollbar = ttk.Scrollbar(self.root, orient=tk.VERTICAL, command=on_main_scrollbar)
+            self.main_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            self.scroll_canvas.configure(yscrollcommand=self.main_scrollbar.set)
+
+            # Main container inside the canvas
+            self.main_container = tk.Frame(self.scroll_canvas, bg=self.theme['bg'])
+            self.canvas_window = self.scroll_canvas.create_window((0, 0), window=self.main_container, anchor='nw')
+            self.widgets.append(('frame', self.main_container))
+
+            # Configure canvas scrolling
+            def configure_scroll_region(event):
+                self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox('all'))
+                self._schedule_cosmic_background_refresh()
+
+            def configure_canvas_width(event):
+                self.scroll_canvas.itemconfig(self.canvas_window, width=event.width)
+                self._schedule_cosmic_background_refresh()
+
+            self.main_container.bind('<Configure>', configure_scroll_region)
+            self.scroll_canvas.bind('<Configure>', configure_canvas_width)
+
+            # Bind mousewheel scrolling
+            def _is_descendant_of(widget, ancestor):
+                try:
+                    w = widget
+                    while w is not None:
+                        if w == ancestor:
+                            return True
+                        w = getattr(w, "master", None)
+                except Exception:
+                    return False
+                return False
+
+            def on_mousewheel(event):
+                # Only scroll main canvas if wheel event originated from main app content.
+                if _is_descendant_of(event.widget, self.main_container) or event.widget == self.scroll_canvas:
+                    self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    return "break"
+
+            self.root.bind('<MouseWheel>', on_mousewheel, add='+')
+
+            # Add generous padding inside main_container (Apple-level whitespace)
+            self.content_frame = tk.Frame(self.main_container, bg=self.theme['bg'])
+            self.content_frame.pack(fill=tk.BOTH, expand=True, padx=32, pady=28)
+            self.widgets.append(('frame', self.content_frame))
+            self.content_frame.bind('<Configure>', lambda _e: self._schedule_cosmic_background_refresh(), add='+')
+
+            # Single nebula background layer behind all main content cards.
+            self.nebula_canvas = tk.Canvas(self.content_frame, bg=self.theme['bg'], highlightthickness=0, bd=0)
+            self.nebula_canvas.place(x=0, y=0, relwidth=1, relheight=1)
+            try:
+                self.root.tk.call("lower", self.nebula_canvas._w)
+            except Exception:
+                pass
+
+            # Smart symptom search bar
+            self.smart_search_frame = tk.Frame(
+                self.content_frame,
+                bg=self.theme['surface'],
+                highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                highlightcolor=self.theme.get('glass_glow', '#7FE4FF'),
+                highlightthickness=2
+            )
+            self.smart_search_frame.pack(fill=tk.X, pady=(0, 12))
+            self.widgets.append(('frame', self.smart_search_frame))
+
+            smart_title_font = ('Codec Cold Trial Bold', 11)
+            self.smart_search_title = tk.Label(
+                self.smart_search_frame,
+                text="SMART FIX SEARCH",
+                font=smart_title_font,
+                bg=self.theme['surface'],
+                fg=self.theme['primary']
+            )
+            self.smart_search_title.pack(anchor=tk.W, padx=12, pady=(8, 4))
+            self.widgets.append(('label', self.smart_search_title))
+            self.widget_fonts[self.smart_search_title] = smart_title_font
+
+            self.smart_search_var = tk.StringVar()
+            self.smart_search_entry = tk.Entry(
+                self.smart_search_frame,
+                textvariable=self.smart_search_var,
+                bg=self.theme['entry_bg'],
+                fg=self.theme['entry_fg'],
+                insertbackground=self.theme['fg'],
+                relief=tk.FLAT,
+                bd=0,
+                highlightthickness=1,
+                highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                highlightcolor=self.theme.get('glass_glow', '#7FE4FF')
+            )
+            self.smart_search_entry.pack(fill=tk.X, padx=12, pady=(0, 8), ipady=7)
+            self.widgets.append(('entry', self.smart_search_entry))
+            self.smart_search_entry.bind("<KeyRelease>", lambda _e: self._update_smart_search_recommendations())
+
+            self.smart_recommendation_label = tk.Label(
+                self.smart_search_frame,
+                text="Type symptoms like: network not working, BSOD, update errors, PC slow.",
+                font=('TT Lakes Neue Trial', 10),
+                bg=self.theme['surface'],
+                fg=self.theme['label_fg_dim'],
+                justify=tk.LEFT,
+                wraplength=980,
+                anchor=tk.W
+            )
+            self.smart_recommendation_label.pack(fill=tk.X, padx=12, pady=(0, 8))
+            self.widgets.append(('label', self.smart_recommendation_label))
+
+            self.smart_apply_button = tk.Button(
+                self.smart_search_frame,
+                text="  APPLY RECOMMENDED TASKS  ",
+                font=('TT Lakes Neue Trial', 10),
+                command=self._apply_smart_recommendations,
+                bg=self.theme['button_bg'],
+                fg=self.theme['button_fg'],
+                activebackground=self.theme['primary'],
+                activeforeground=self.theme['button_fg'],
+                bd=0,
+                padx=14,
+                pady=8,
+                cursor="hand2",
+                relief=tk.FLAT
+            )
+            self.smart_apply_button.pack(anchor=tk.W, padx=12, pady=(0, 10))
+            self.widgets.append(('button', self.smart_apply_button))
+
+            # Admin status -- moved to header as integrated LED badge
+            admin_font = ('Bahnschrift SemiBold', 10)
+            self.admin_label = tk.Label(
+                self.header_frame,
+                text="",
+                font=admin_font,
+                bg=self.theme['admin_indicator'],
+                fg='#FFFFFF',
+                padx=16,
+                pady=6,
+                relief=tk.FLAT,
+                highlightthickness=1,
+                highlightbackground=self.theme['task_border']
+            )
+            self.admin_label.pack(side=tk.LEFT, padx=(0, 20))
+            self.widgets.append(('label', self.admin_label))
+            self.widget_fonts[self.admin_label] = admin_font
+
+            # Cosmic Canvas for the two-column layout (nebula bg visible in gap)
+            self.columns_canvas = tk.Canvas(self.content_frame, bg=self.theme['bg'], highlightthickness=0)
+            self.columns_canvas.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('frame', self.columns_canvas))
+
+            # Configure equal weight for 2 columns
+            self.columns_canvas.columnconfigure(0, weight=1, uniform="equal")
+            self.columns_canvas.columnconfigure(1, weight=1, uniform="equal")
+            self.columns_canvas.rowconfigure(0, weight=1)
+
+            # Left column
+            self.left_frame = tk.Frame(self.columns_canvas, bg=self.theme['bg'])
+            self.left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 22))
+            self.widgets.append(('frame', self.left_frame))
+
+            # Premium card-style Labelframes
+            task_frame_font = ('NIKEA', 14)
+            self.task_frame = tk.LabelFrame(
+                self.left_frame,
+                text="  CORE SYSTEM TASKS  ",
+                font=task_frame_font,
+                bd=0,
+                relief=tk.FLAT,
+                bg=self.theme['surface'],
+                fg=self.theme['primary'],
+                padx=22,
+                pady=20,
+                highlightbackground=self.theme['task_border'],
+                highlightthickness=1
+            )
+            self.task_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 18))
+            self.widgets.append(('labelframe', self.task_frame))
+            self.widget_fonts[self.task_frame] = task_frame_font
+
+            app_frame_font = ('NIKEA', 14)
+            self.app_frame = tk.LabelFrame(
+                self.left_frame,
+                text="  APP SETTINGS  ",
+                font=app_frame_font,
+                bd=0,
+                relief=tk.FLAT,
+                bg=self.theme['surface'],
+                fg=self.theme['primary'],
+                padx=22,
+                pady=20,
+                highlightbackground=self.theme['task_border'],
+                highlightthickness=1
+            )
+            self.app_frame.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('labelframe', self.app_frame))
+            self.widget_fonts[self.app_frame] = app_frame_font
+
+            # Right column
+            self.right_frame = tk.Frame(self.columns_canvas, bg=self.theme['bg'])
+            self.right_frame.grid(row=0, column=1, sticky="nsew", padx=(22, 0))
+            self.widgets.append(('frame', self.right_frame))
+
+            additional_task_frame_font = ('NIKEA', 14)
+            self.additional_task_frame = tk.LabelFrame(
+                self.right_frame,
+                text="  ADDITIONAL TASKS  ",
+                font=additional_task_frame_font,
+                bd=0,
+                relief=tk.FLAT,
+                bg=self.theme['surface'],
+                fg=self.theme['primary'],
+                padx=22,
+                pady=20,
+                highlightbackground=self.theme['task_border'],
+                highlightthickness=1
+            )
+            self.additional_task_frame.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('labelframe', self.additional_task_frame))
+            self.widget_fonts[self.additional_task_frame] = additional_task_frame_font
+
+            # Task variables (No change to logic)
+            self.clean_temp = tk.BooleanVar(value=False)
+            self.disk_cleanup = tk.BooleanVar(value=False)
+            self.disable_fast_startup = tk.BooleanVar(value=False)
+            self.repair_system = tk.BooleanVar(value=False)
+            self.autopilot_csv = tk.BooleanVar(value=False)
+            self.chk_dsk = tk.BooleanVar(value=False)
+            self.windows_adjustments = tk.BooleanVar(value=False)
+            self.windows_updates = tk.BooleanVar(value=False)
+            self.device_firmware = tk.BooleanVar(value=False)
+            self.flush_dns = tk.BooleanVar(value=False)
+            self.ipconfig_all = tk.BooleanVar(value=False)
+            self.change_dns = tk.BooleanVar(value=False)
+            self.pc_report = tk.BooleanVar(value=False)
+            self.chris_titus_utility = tk.BooleanVar(value=False)
+            self.storage_sence = tk.BooleanVar(value=False)
+            self.oo_shutup10 = tk.BooleanVar(value=False)
+            self.edge_performance = tk.BooleanVar(value=False)
+            self.disable_gaming_features = tk.BooleanVar(value=False)
+            self.enable_gaming_features = tk.BooleanVar(value=False)
+            self.adjust_virtual_memory = tk.BooleanVar(value=False)
+            self.install_system_drivers = tk.BooleanVar(value=False)
+            self.debloat_windows = tk.BooleanVar(value=False)
+            self.reset_win_update = tk.BooleanVar(value=False)
+            self.reset_network = tk.BooleanVar(value=False)
+            self.rebuild_icon_cache = tk.BooleanVar(value=False)
+            self.component_cleanup = tk.BooleanVar(value=False)
+            self.clear_print_spooler = tk.BooleanVar(value=False)
+            self.toggle_safe_mode = tk.BooleanVar(value=False)
+            self.boot_advanced_options = tk.BooleanVar(value=False)
+            self.export_wifi_passwords = tk.BooleanVar(value=False)
+            self.reset_hosts = tk.BooleanVar(value=False)
+            self.rebuild_font_cache = tk.BooleanVar(value=False)
+            self.reset_search_index = tk.BooleanVar(value=False)
+            self.network_adapter_reset = tk.BooleanVar(value=False)
+            self.ping_test = tk.BooleanVar(value=False)
+            self.defrag_optimize = tk.BooleanVar(value=False)
+            self.defender_scan = tk.BooleanVar(value=False)
+            self.clear_browser_cache = tk.BooleanVar(value=False)
+            self.event_log_viewer = tk.BooleanVar(value=False)
+            self.msrt_scan = tk.BooleanVar(value=False)
+            self.minidump_analyzer = tk.BooleanVar(value=False)
+            self.deep_network_remediation = tk.BooleanVar(value=False)
+            self.sysinternals_autoruns = tk.BooleanVar(value=False)
+            self.sysinternals_procexp = tk.BooleanVar(value=False)
+            self.bsod_triage = tk.BooleanVar(value=False)
+            self.driver_rollback_center = tk.BooleanVar(value=False)
+            self.windows_update_forensic = tk.BooleanVar(value=False)
+            self.smart_malware_remediation = tk.BooleanVar(value=False)
+            self.network_diagnostic_bundle = tk.BooleanVar(value=False)
+            self.service_dependency_repair = tk.BooleanVar(value=False)
+            self.create_restore_point_guardrail = tk.BooleanVar(value=False)
+            self.activate_windows = tk.BooleanVar(value=False)
+
+            # App settings variables
+            self.stop_background_apps_var = tk.BooleanVar(value=False)
+            self.disable_startup_apps_var = tk.BooleanVar(value=False)
+            self.update_apps = tk.BooleanVar(value=False)
+
+            # Checkbox containers
+            self.checkbox_frame = tk.Frame(self.task_frame, bg=self.theme['surface'])
+            self.checkbox_frame.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('frame', self.checkbox_frame))
+
+            self.app_checkbox_frame = tk.Frame(self.app_frame, bg=self.theme['surface'])
+            self.app_checkbox_frame.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('frame', self.app_checkbox_frame))
+
+            self.additional_checkbox_frame = tk.Frame(self.additional_task_frame, bg=self.theme['surface'])
+            self.additional_checkbox_frame.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('frame', self.additional_checkbox_frame))
+
+            # Create core system tasks checkboxes
+            task_font = ('TT Lakes Neue Trial', 10)
+            section_font = ('Codec Cold Trial Bold', 10)
+
+            # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            # LEFT COLUMN -- CORE SYSTEM TASKS (self.checkbox_frame)
+            # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+            # â"€â"€ ðŸ§¹ CLEANUP â"€â"€
+            cleanup_header = tk.Label(self.checkbox_frame, text="CLEANUP", font=section_font,
+                                      bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            cleanup_header.pack(fill=tk.X, pady=(4, 6))
+            self.widgets.append(('label', cleanup_header))
+            self.widget_fonts[cleanup_header] = section_font
+
+            # Clean Temp
+            temp_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            temp_frame.pack(fill=tk.X, pady=3)
+            self.temp_checkbox = tk.Checkbutton(
+                temp_frame,
+                text="Clean Temp Files (System-wide)",
+                variable=self.clean_temp,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt'],
+                relief=tk.FLAT
+            )
+            self.temp_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.temp_checkbox))
+            self.widget_fonts[self.temp_checkbox] = task_font
+            temp_indicator = tk.Label(temp_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                      fg=self.theme['admin_indicator'])
+            temp_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.temp_checkbox,
+                    "Cleans: Windows Temp, User Temp, Prefetch, and browser caches. Frees up disk space without affecting system files.",
+                    self.theme)
+
+            # Disk Cleanup
+            disk_cleanup_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            disk_cleanup_frame.pack(fill=tk.X, pady=3)
+            self.disk_cleanup_checkbox = tk.Checkbutton(
+                disk_cleanup_frame,
+                text="Deep Disk Cleanup",
+                variable=self.disk_cleanup,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.disk_cleanup_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.disk_cleanup_checkbox))
+            self.widget_fonts[self.disk_cleanup_checkbox] = task_font
+            disk_cleanup_indicator = tk.Label(disk_cleanup_frame, text="●", font=('Segoe UI', 10),
+                                              bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            disk_cleanup_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.disk_cleanup_checkbox,
+                    "Runs Windows Disk Cleanup with ALL options enabled: System cache, Update cleanup, Thumbnails, and Error reports.",
+                    self.theme)
+
+            # Clear Browser Cache
+            browser_cache_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            browser_cache_frame.pack(fill=tk.X, pady=3)
+            self.browser_cache_checkbox = tk.Checkbutton(
+                browser_cache_frame,
+                text="Clear Browser Cache (Edge/Chrome/Firefox)",
+                variable=self.clear_browser_cache,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.browser_cache_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.browser_cache_checkbox))
+            self.widget_fonts[self.browser_cache_checkbox] = task_font
+            browser_cache_indicator = tk.Label(browser_cache_frame, text="●", font=('Segoe UI', 10),
+                                               bg=self.theme['surface'], fg=self.theme['user_indicator'])
+            browser_cache_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.browser_cache_checkbox,
+                    "Deletes cache folders for Edge, Chrome, and Firefox. Close browsers first for best results.",
+                    self.theme)
+
+            # Component Store Cleanup
+            comp_cleanup_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            comp_cleanup_frame.pack(fill=tk.X, pady=3)
+            self.comp_cleanup_checkbox = tk.Checkbutton(
+                comp_cleanup_frame,
+                text="Component Store Cleanup (DISM)",
+                variable=self.component_cleanup,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.comp_cleanup_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.comp_cleanup_checkbox))
+            self.widget_fonts[self.comp_cleanup_checkbox] = task_font
+            comp_cleanup_indicator = tk.Label(comp_cleanup_frame, text="●", font=('Segoe UI', 10),
+                                              bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            comp_cleanup_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.comp_cleanup_checkbox,
+                    "DISM /StartComponentCleanup -- removes old update backups and frees disk space from the component store.",
+                    self.theme)
+
+            # â"€â"€ ðŸ"§ REPAIR & RECOVERY â"€â"€
+            repair_header = tk.Label(self.checkbox_frame, text="REPAIR & RECOVERY", font=section_font,
+                                     bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            repair_header.pack(fill=tk.X, pady=(14, 6))
+            self.widgets.append(('label', repair_header))
+            self.widget_fonts[repair_header] = section_font
+
+            # Repair System
+            repair_system_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            repair_system_frame.pack(fill=tk.X, pady=3)
+            self.repair_system_checkbox = tk.Checkbutton(
+                repair_system_frame,
+                text="Repair System (SFC/DISM)",
+                variable=self.repair_system,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.repair_system_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.repair_system_checkbox))
+            self.widget_fonts[self.repair_system_checkbox] = task_font
+            repair_system_indicator = tk.Label(repair_system_frame, text="●", font=('Segoe UI', 10),
+                                               bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            repair_system_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.repair_system_checkbox, "Repairs Windows system files using SFC and DISM", self.theme)
+
+            # CHKDSK
+            chk_dsk_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            chk_dsk_frame.pack(fill=tk.X, pady=3)
+            self.chk_dsk_checkbox = tk.Checkbutton(
+                chk_dsk_frame,
+                text="CHKDSK C: /R (Reboot required)",
+                variable=self.chk_dsk,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.chk_dsk_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.chk_dsk_checkbox))
+            self.widget_fonts[self.chk_dsk_checkbox] = task_font
+            chk_dsk_indicator = tk.Label(chk_dsk_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                         fg=self.theme['admin_indicator'])
+            chk_dsk_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.chk_dsk_checkbox, "Checks disk for errors and repairs them on next reboot", self.theme)
+
+            # Reset Windows Update Components
+            reset_wu_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            reset_wu_frame.pack(fill=tk.X, pady=3)
+            self.reset_wu_checkbox = tk.Checkbutton(
+                reset_wu_frame,
+                text="Reset Windows Update Components",
+                variable=self.reset_win_update,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.reset_wu_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.reset_wu_checkbox))
+            self.widget_fonts[self.reset_wu_checkbox] = task_font
+            reset_wu_indicator = tk.Label(reset_wu_frame, text="●", font=('Segoe UI', 10),
+                                          bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            reset_wu_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.reset_wu_checkbox,
+                    "Stops update services, renames SoftwareDistribution & catroot2, restarts services. Fixes stuck or failing Windows Updates.",
+                    self.theme)
+
+            # Rebuild Icon & Thumbnail Cache
+            rebuild_icon_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            rebuild_icon_frame.pack(fill=tk.X, pady=3)
+            self.rebuild_icon_checkbox = tk.Checkbutton(
+                rebuild_icon_frame,
+                text="Rebuild Icon & Thumbnail Cache",
+                variable=self.rebuild_icon_cache,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.rebuild_icon_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.rebuild_icon_checkbox))
+            self.widget_fonts[self.rebuild_icon_checkbox] = task_font
+            rebuild_icon_indicator = tk.Label(rebuild_icon_frame, text="●", font=('Segoe UI', 10),
+                                              bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            rebuild_icon_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.rebuild_icon_checkbox,
+                    "Clears icon and thumbnail caches and restarts Explorer. Fixes blank, black, or corrupted icons on desktop, taskbar, and File Explorer.",
+                    self.theme)
+
+            # Clear Print Spooler
+            print_sp_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            print_sp_frame.pack(fill=tk.X, pady=3)
+            self.print_sp_checkbox = tk.Checkbutton(
+                print_sp_frame, text="Clear Print Spooler Queue", variable=self.clear_print_spooler, font=task_font,
+                anchor=tk.W, bg=self.theme['surface'], fg=self.theme['task_fg'], selectcolor=self.theme['surface_alt'], activebackground=self.theme['surface_alt']
+            )
+            self.print_sp_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.print_sp_checkbox))
+            self.widget_fonts[self.print_sp_checkbox] = task_font
+            print_sp_ind = tk.Label(print_sp_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            print_sp_ind.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.print_sp_checkbox, "Stops the print spooler, deletes all stuck print jobs, and restarts the service.", self.theme)
+
+            # Safe Mode Toggle
+            safe_mode_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            safe_mode_frame.pack(fill=tk.X, pady=3)
+            self.safe_mode_checkbox = tk.Checkbutton(
+                safe_mode_frame, text="Safe Mode Boot Toggle", variable=self.toggle_safe_mode, font=task_font,
+                anchor=tk.W, bg=self.theme['surface'], fg=self.theme['task_fg'], selectcolor=self.theme['surface_alt'], activebackground=self.theme['surface_alt']
+            )
+            self.safe_mode_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.safe_mode_checkbox))
+            self.widget_fonts[self.safe_mode_checkbox] = task_font
+            safe_mode_ind = tk.Label(safe_mode_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            safe_mode_ind.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.safe_mode_checkbox, "Toggles whether the PC will reboot into Safe Mode with Networking on the next restart.", self.theme)
+
+            # Boot to Advanced Options / BIOS
+            boot_adv_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            boot_adv_frame.pack(fill=tk.X, pady=3)
+            self.boot_adv_checkbox = tk.Checkbutton(
+                boot_adv_frame, text="Boot to Advanced Options / BIOS", variable=self.boot_advanced_options, font=task_font,
+                anchor=tk.W, bg=self.theme['surface'], fg=self.theme['task_fg'], selectcolor=self.theme['surface_alt'], activebackground=self.theme['surface_alt']
+            )
+            self.boot_adv_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.boot_adv_checkbox))
+            self.widget_fonts[self.boot_adv_checkbox] = task_font
+            boot_adv_ind = tk.Label(boot_adv_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            boot_adv_ind.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.boot_adv_checkbox, "Forces the PC to reboot directly into the BIOS/UEFI or Advanced Startup Options menu.", self.theme)
+
+            # Rebuild Font Cache
+            font_cache_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            font_cache_frame.pack(fill=tk.X, pady=3)
+            self.font_cache_checkbox = tk.Checkbutton(
+                font_cache_frame,
+                text="Rebuild Font Cache",
+                variable=self.rebuild_font_cache,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.font_cache_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.font_cache_checkbox))
+            self.widget_fonts[self.font_cache_checkbox] = task_font
+            font_cache_indicator = tk.Label(font_cache_frame, text="●", font=('Segoe UI', 10),
+                                            bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            font_cache_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.font_cache_checkbox,
+                    "Stops the Font Cache service, deletes font cache files, and restarts the service. Fixes corrupted or missing fonts.",
+                    self.theme)
+
+            # Reset Windows Search Index
+            search_index_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            search_index_frame.pack(fill=tk.X, pady=3)
+            self.search_index_checkbox = tk.Checkbutton(
+                search_index_frame,
+                text="Reset Windows Search Index",
+                variable=self.reset_search_index,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.search_index_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.search_index_checkbox))
+            self.widget_fonts[self.search_index_checkbox] = task_font
+            search_index_indicator = tk.Label(search_index_frame, text="●", font=('Segoe UI', 10),
+                                              bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            search_index_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.search_index_checkbox,
+                    "Stops Windows Search, deletes the search index database, and restarts the service. Fixes broken search and Cortana.",
+                    self.theme)
+
+            # Service Dependency Repair
+            service_dep_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            service_dep_frame.pack(fill=tk.X, pady=3)
+            self.service_dep_checkbox = tk.Checkbutton(
+                service_dep_frame,
+                text="Service Dependency Repair",
+                variable=self.service_dependency_repair,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.service_dep_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.service_dep_checkbox))
+            self.widget_fonts[self.service_dep_checkbox] = task_font
+            service_dep_indicator = tk.Label(service_dep_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            service_dep_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.service_dep_checkbox,
+                    "Repairs critical Windows service dependency chains and restarts broken core services.",
+                    self.theme)
+
+            # â"€â"€ âš¡ PERFORMANCE â"€â"€
+            perf_header = tk.Label(self.checkbox_frame, text="PERFORMANCE", font=section_font,
+                                   bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            perf_header.pack(fill=tk.X, pady=(14, 6))
+            self.widgets.append(('label', perf_header))
+            self.widget_fonts[perf_header] = section_font
+
+            # Disable Fast Startup
+            fast_startup_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            fast_startup_frame.pack(fill=tk.X, pady=3)
+            self.fast_startup_checkbox = tk.Checkbutton(
+                fast_startup_frame,
+                text="Disable Fast Startup",
+                variable=self.disable_fast_startup,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.fast_startup_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.fast_startup_checkbox))
+            self.widget_fonts[self.fast_startup_checkbox] = task_font
+            fast_startup_indicator = tk.Label(fast_startup_frame, text="●", font=('Segoe UI', 10),
+                                              bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            fast_startup_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.fast_startup_checkbox,
+                    "Disables Fast Startup (Hybrid shutdown). Fixes issues with dual-boot, drivers, and ensures clean shutdowns. Recommended for most users.",
+                    self.theme)
+
+            # Optimize Virtual Memory
+            virtual_memory_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            virtual_memory_frame.pack(fill=tk.X, pady=3)
+            self.virtual_memory_checkbox = tk.Checkbutton(
+                virtual_memory_frame,
+                text="Optimize Virtual Memory",
+                variable=self.adjust_virtual_memory,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.virtual_memory_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.virtual_memory_checkbox))
+            self.widget_fonts[self.virtual_memory_checkbox] = task_font
+            virtual_memory_indicator = tk.Label(virtual_memory_frame, text="●", font=('Segoe UI', 10),
+                                                bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            virtual_memory_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.virtual_memory_checkbox,
+                    "Detects your RAM (e.g. 16GB) â†' Sets page file to 2x RAM (32GB). Shows current vs recommended settings. Requires restart.",
+                    self.theme)
+
+            # Performance Adjustments
+            windows_adjustments_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            windows_adjustments_frame.pack(fill=tk.X, pady=3)
+            self.windows_adjustments_checkbox = tk.Checkbutton(
+                windows_adjustments_frame,
+                text="Performance Adjustments",
+                variable=self.windows_adjustments,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.windows_adjustments_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.windows_adjustments_checkbox))
+            self.widget_fonts[self.windows_adjustments_checkbox] = task_font
+            windows_adjustments_indicator = tk.Label(windows_adjustments_frame, text="●", font=('Segoe UI', 10),
+                                                     bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            windows_adjustments_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.windows_adjustments_checkbox, "Applies performance tweaks to Windows", self.theme)
+
+            # Optimize Drives (SSD-Safe)
+            defrag_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            defrag_frame.pack(fill=tk.X, pady=3)
+            self.defrag_checkbox = tk.Checkbutton(
+                defrag_frame,
+                text="Optimize Drives (SSD-Safe)",
+                variable=self.defrag_optimize,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.defrag_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.defrag_checkbox))
+            self.widget_fonts[self.defrag_checkbox] = task_font
+            defrag_indicator = tk.Label(defrag_frame, text="●", font=('Segoe UI', 10),
+                                        bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            defrag_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.defrag_checkbox,
+                    "Optimizes all drives: TRIM for SSDs, Defrag for HDDs. Automatically detects drive type -- will NEVER defrag an SSD.",
+                    self.theme)
+
+            # Turn Off Gaming Features
+            gaming_features_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            gaming_features_frame.pack(fill=tk.X, pady=3)
+            self.gaming_features_checkbox = tk.Checkbutton(
+                gaming_features_frame,
+                text="Turn Off All Gaming Features",
+                variable=self.disable_gaming_features,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.gaming_features_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.gaming_features_checkbox))
+            self.widget_fonts[self.gaming_features_checkbox] = task_font
+            gaming_features_indicator = tk.Label(gaming_features_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            gaming_features_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.gaming_features_checkbox,
+                    "Turns OFF: Game Bar overlay, Game DVR recording, Game Mode optimizations, Background recording, Xbox Game Monitoring. May improve performance on non-gaming PCs.",
+                    self.theme)
+
+            # Turn On Gaming Features
+            gaming_features_on_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            gaming_features_on_frame.pack(fill=tk.X, pady=3)
+            self.gaming_features_on_checkbox = tk.Checkbutton(
+                gaming_features_on_frame,
+                text="Turn On All Gaming Features",
+                variable=self.enable_gaming_features,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.gaming_features_on_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.gaming_features_on_checkbox))
+            self.widget_fonts[self.gaming_features_on_checkbox] = task_font
+            gaming_features_on_indicator = tk.Label(
+                gaming_features_on_frame, text="●", font=('Segoe UI', 10),
+                bg=self.theme['surface'], fg=self.theme['admin_indicator']
+            )
+            gaming_features_on_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(
+                self.gaming_features_on_checkbox,
+                "Turns ON: Game Bar + Guide button, Game Mode, optimizations for windowed games, HAGS, VRR, and adds detected game executables to Graphics high-performance app preferences.",
+                self.theme
+            )
+
+            # Edge Performance Adjustments
+            edge_perf_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
+            edge_perf_frame.pack(fill=tk.X, pady=3)
+            self.edge_performance_checkbox = tk.Checkbutton(
+                edge_perf_frame,
+                text="Edge Performance Adjustments",
+                variable=self.edge_performance,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.edge_performance_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.edge_performance_checkbox))
+            self.widget_fonts[self.edge_performance_checkbox] = task_font
+            edge_perf_indicator = tk.Label(edge_perf_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                           fg=self.theme['user_indicator'])
+            edge_perf_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.edge_performance_checkbox,
+                    "Disables: Startup Boost (runs Edge at boot), Background Apps. Changes default search to Google instead of Bing.",
+                    self.theme)
+
+            # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            # RIGHT COLUMN -- ADDITIONAL TASKS (self.additional_checkbox_frame)
+            # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+            # â"€â"€ ðŸŒ NETWORK â"€â"€
+            network_header = tk.Label(self.additional_checkbox_frame, text="NETWORK", font=section_font,
+                                      bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            network_header.pack(fill=tk.X, pady=(4, 6))
+            self.widgets.append(('label', network_header))
+            self.widget_fonts[network_header] = section_font
+
+            # Flush DNS
+            flush_dns_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            flush_dns_frame.pack(fill=tk.X, pady=3)
+            self.flush_dns_checkbox = tk.Checkbutton(
+                flush_dns_frame,
+                text="Flush DNS & Renew IP",
+                variable=self.flush_dns,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.flush_dns_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.flush_dns_checkbox))
+            self.widget_fonts[self.flush_dns_checkbox] = task_font
+            flush_dns_indicator = tk.Label(flush_dns_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                           fg=self.theme['user_indicator'])
+            flush_dns_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.flush_dns_checkbox, "Flushes DNS cache and renews your IP address", self.theme)
+
+            # Display IP Config
+            ipconfig_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            ipconfig_frame.pack(fill=tk.X, pady=3)
+            self.ipconfig_all_checkbox = tk.Checkbutton(
+                ipconfig_frame,
+                text="Display Network Config",
+                variable=self.ipconfig_all,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.ipconfig_all_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.ipconfig_all_checkbox))
+            self.widget_fonts[self.ipconfig_all_checkbox] = task_font
+            ipconfig_indicator = tk.Label(ipconfig_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                          fg=self.theme['user_indicator'])
+            ipconfig_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.ipconfig_all_checkbox, "Displays detailed network configuration information", self.theme)
+
+            # Change DNS
+            change_dns_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            change_dns_frame.pack(fill=tk.X, pady=3)
+            self.change_dns_checkbox = tk.Checkbutton(
+                change_dns_frame,
+                text="Set Fast DNS (1.1.1.1/8.8.8.8)",
+                variable=self.change_dns,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.change_dns_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.change_dns_checkbox))
+            self.widget_fonts[self.change_dns_checkbox] = task_font
+            change_dns_indicator = tk.Label(change_dns_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                            fg=self.theme['admin_indicator'])
+            change_dns_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.change_dns_checkbox, "Changes DNS servers to Cloudflare and Google", self.theme)
+
+            # Reset Network Stack (Winsock & TCP/IP)
+            reset_net_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            hosts_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme["surface"])
+            hosts_frame.pack(fill=tk.X, pady=3)
+            self.reset_hosts_checkbox = tk.Checkbutton(
+                hosts_frame,
+                text="Reset / Flush Hosts File",
+                variable=self.reset_hosts,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.reset_hosts_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(("checkbutton", self.reset_hosts_checkbox))
+            self.widget_fonts[self.reset_hosts_checkbox] = task_font
+            hosts_ind = tk.Label(hosts_frame, text="●", font=("Segoe UI", 9), bg=self.theme["surface"], fg=self.theme["admin_indicator"])
+            hosts_ind.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.reset_hosts_checkbox, "Resets the Windows Hosts file to default, fixing connection issues caused by malware or bad ad-blockers.", self.theme)
+
+            reset_net_frame.pack(fill=tk.X, pady=3)
+            self.reset_net_checkbox = tk.Checkbutton(
+                reset_net_frame,
+                text="Reset Network Stack (Winsock/TCP)",
+                variable=self.reset_network,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.reset_net_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.reset_net_checkbox))
+            self.widget_fonts[self.reset_net_checkbox] = task_font
+            reset_net_indicator = tk.Label(reset_net_frame, text="●", font=('Segoe UI', 10),
+                                           bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            reset_net_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.reset_net_checkbox,
+                    "Resets Winsock catalog and TCP/IP stack. Fixes 'No Internet Access' and deep connectivity issues. Requires reboot.",
+                    self.theme)
+
+            # Deep Network Stack Remediation
+            deep_net_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            deep_net_frame.pack(fill=tk.X, pady=3)
+            self.deep_net_checkbox = tk.Checkbutton(
+                deep_net_frame,
+                text="Deep Network Stack Remediation",
+                variable=self.deep_network_remediation,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.deep_net_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.deep_net_checkbox))
+            self.widget_fonts[self.deep_net_checkbox] = task_font
+            deep_net_indicator = tk.Label(deep_net_frame, text="●", font=('Segoe UI', 10),
+                                           bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            deep_net_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.deep_net_checkbox,
+                    "Runs aggressive network stack resets (Winsock, TCP/IP, Firewall, ARP, NBT). Requires reboot.",
+                    self.theme)
+
+            # Export Wi-Fi Passwords
+            wifi_pass_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            wifi_pass_frame.pack(fill=tk.X, pady=3)
+            self.wifi_pass_checkbox = tk.Checkbutton(
+                wifi_pass_frame, text="View / Export Saved Wi-Fi Passwords", variable=self.export_wifi_passwords, font=task_font,
+                anchor=tk.W, bg=self.theme['surface'], fg=self.theme['task_fg'], selectcolor=self.theme['surface_alt'], activebackground=self.theme['surface_alt']
+            )
+            self.wifi_pass_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.wifi_pass_checkbox))
+            self.widget_fonts[self.wifi_pass_checkbox] = task_font
+            wifi_pass_ind = tk.Label(wifi_pass_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            wifi_pass_ind.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.wifi_pass_checkbox, "Extracts all saved Wi-Fi networks and plain-text passwords and saves them to a file on the Desktop.", self.theme)
+
+            # Network Adapter Reset
+            net_adapter_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            net_adapter_frame.pack(fill=tk.X, pady=3)
+            self.net_adapter_checkbox = tk.Checkbutton(
+                net_adapter_frame,
+                text="Reset Network Adapters",
+                variable=self.network_adapter_reset,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.net_adapter_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.net_adapter_checkbox))
+            self.widget_fonts[self.net_adapter_checkbox] = task_font
+            net_adapter_indicator = tk.Label(net_adapter_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            net_adapter_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.net_adapter_checkbox,
+                    "Disables and re-enables all network adapters. Quick fix for connectivity glitches.",
+                    self.theme)
+
+            # Ping Test / Connectivity Check
+            ping_test_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            ping_test_frame.pack(fill=tk.X, pady=3)
+            self.ping_test_checkbox = tk.Checkbutton(
+                ping_test_frame,
+                text="Ping Test (Connectivity Check)",
+                variable=self.ping_test,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.ping_test_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.ping_test_checkbox))
+            self.widget_fonts[self.ping_test_checkbox] = task_font
+            ping_test_indicator = tk.Label(ping_test_frame, text="●", font=('Segoe UI', 10),
+                                           bg=self.theme['surface'], fg=self.theme['user_indicator'])
+            ping_test_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.ping_test_checkbox,
+                    "Pings default gateway, Google DNS (8.8.8.8), Cloudflare (1.1.1.1), and google.com to check connectivity.",
+                    self.theme)
+
+            # Network Deep Diagnosis Bundle
+            net_diag_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            net_diag_frame.pack(fill=tk.X, pady=3)
+            self.net_diag_checkbox = tk.Checkbutton(
+                net_diag_frame,
+                text="Network Deep Diagnosis Bundle",
+                variable=self.network_diagnostic_bundle,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.net_diag_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.net_diag_checkbox))
+            self.widget_fonts[self.net_diag_checkbox] = task_font
+            net_diag_indicator = tk.Label(net_diag_frame, text="●", font=('Segoe UI', 10),
+                                          bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            net_diag_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.net_diag_checkbox,
+                    "Builds a deep connectivity report (adapter state, routing, DNS, ping tests, and error signals).",
+                    self.theme)
+
+            # â"€â"€ ðŸ›¡ï¸ SECURITY & DIAGNOSTICS â"€â"€
+            security_header = tk.Label(self.additional_checkbox_frame, text="SECURITY & DIAGNOSTICS", font=section_font,
+                                       bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            security_header.pack(fill=tk.X, pady=(14, 6))
+            self.widgets.append(('label', security_header))
+            self.widget_fonts[security_header] = section_font
+
+            # Windows Defender Full Scan
+            defender_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            defender_frame.pack(fill=tk.X, pady=3)
+            self.defender_checkbox = tk.Checkbutton(
+                defender_frame,
+                text="Windows Defender Full Scan",
+                variable=self.defender_scan,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.defender_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.defender_checkbox))
+            self.widget_fonts[self.defender_checkbox] = task_font
+            defender_indicator = tk.Label(defender_frame, text="●", font=('Segoe UI', 10),
+                                          bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            defender_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.defender_checkbox,
+                    "Launches a full system scan using Windows Defender (MpCmdRun.exe). This may take a long time.",
+                    self.theme)
+
+            # MSRT Malware Check
+            msrt_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            msrt_frame.pack(fill=tk.X, pady=3)
+            self.msrt_checkbox = tk.Checkbutton(
+                msrt_frame,
+                text="MSRT Quick Malware Scan",
+                variable=self.msrt_scan,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.msrt_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.msrt_checkbox))
+            self.widget_fonts[self.msrt_checkbox] = task_font
+            msrt_indicator = tk.Label(msrt_frame, text="●", font=('Segoe UI', 10),
+                                      bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            msrt_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.msrt_checkbox,
+                    "Runs the Microsoft Malicious Software Removal Tool (MRT.exe) in quiet mode for a quick scan.",
+                    self.theme)
+
+            # MiniDump Analyzer (BlueScreenView)
+            minidump_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            minidump_frame.pack(fill=tk.X, pady=3)
+            self.minidump_checkbox = tk.Checkbutton(
+                minidump_frame,
+                text="MiniDump Analyzer (BlueScreenView)",
+                variable=self.minidump_analyzer,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.minidump_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.minidump_checkbox))
+            self.widget_fonts[self.minidump_checkbox] = task_font
+            minidump_indicator = tk.Label(minidump_frame, text="●", font=('Segoe UI', 10),
+                                          bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            minidump_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.minidump_checkbox,
+                    "Downloads and launches NirSoft BlueScreenView to analyze BSOD minidump files.",
+                    self.theme)
+
+            # One-Click BSOD Triage
+            bsod_triage_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            bsod_triage_frame.pack(fill=tk.X, pady=3)
+            self.bsod_triage_checkbox = tk.Checkbutton(
+                bsod_triage_frame,
+                text="One-Click BSOD Triage",
+                variable=self.bsod_triage,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.bsod_triage_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.bsod_triage_checkbox))
+            self.widget_fonts[self.bsod_triage_checkbox] = task_font
+            bsod_triage_indicator = tk.Label(bsod_triage_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            bsod_triage_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.bsod_triage_checkbox,
+                    "Collects crash dumps, bugcheck events, driver context, and builds a Desktop triage report.",
+                    self.theme)
+
+            # Smart Malware Remediation Mode
+            smart_malware_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            smart_malware_frame.pack(fill=tk.X, pady=3)
+            self.smart_malware_checkbox = tk.Checkbutton(
+                smart_malware_frame,
+                text="Smart Malware Remediation Mode",
+                variable=self.smart_malware_remediation,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.smart_malware_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.smart_malware_checkbox))
+            self.widget_fonts[self.smart_malware_checkbox] = task_font
+            smart_malware_indicator = tk.Label(smart_malware_frame, text="●", font=('Segoe UI', 10),
+                                               bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            smart_malware_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.smart_malware_checkbox,
+                    "Runs Defender signature update + scan, MSRT, startup persistence inventory, and saves a remediation report.",
+                    self.theme)
+
+            # Event Log Viewer
+            event_log_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            event_log_frame.pack(fill=tk.X, pady=3)
+            self.event_log_checkbox = tk.Checkbutton(
+                event_log_frame,
+                text="View Recent Event Log Errors",
+                variable=self.event_log_viewer,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.event_log_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.event_log_checkbox))
+            self.widget_fonts[self.event_log_checkbox] = task_font
+            event_log_indicator = tk.Label(event_log_frame, text="●", font=('Segoe UI', 10),
+                                           bg=self.theme['surface'], fg=self.theme['user_indicator'])
+            event_log_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.event_log_checkbox,
+                    "Shows the 25 most recent Error and Warning events from the Windows System and Application logs.",
+                    self.theme)
+
+            # PC Report
+            pc_report_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            pc_report_frame.pack(fill=tk.X, pady=3)
+            self.pc_report_checkbox = tk.Checkbutton(
+                pc_report_frame,
+                text="Generate PC Report",
+                variable=self.pc_report,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.pc_report_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.pc_report_checkbox))
+            self.widget_fonts[self.pc_report_checkbox] = task_font
+            pc_report_indicator = tk.Label(pc_report_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                           fg=self.theme['user_indicator'])
+            pc_report_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.pc_report_checkbox, "Generates a detailed system report", self.theme)
+
+            # â"€â"€ ðŸ"„ UPDATES & DRIVERS â"€â"€
+            updates_header = tk.Label(self.additional_checkbox_frame, text="UPDATES & DRIVERS", font=section_font,
+                                      bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            updates_header.pack(fill=tk.X, pady=(14, 6))
+            self.widgets.append(('label', updates_header))
+            self.widget_fonts[updates_header] = section_font
+
+            # Check Windows Updates
+            windows_updates_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            windows_updates_frame.pack(fill=tk.X, pady=3)
+            self.windows_updates_checkbox = tk.Checkbutton(
+                windows_updates_frame,
+                text="Check & Install Windows Updates",
+                variable=self.windows_updates,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.windows_updates_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.windows_updates_checkbox))
+            self.widget_fonts[self.windows_updates_checkbox] = task_font
+            windows_updates_indicator = tk.Label(windows_updates_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            windows_updates_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.windows_updates_checkbox, "Checks for and installs available Windows updates", self.theme)
+
+            # OEM Firmware Updates
+            device_firmware_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            device_firmware_frame.pack(fill=tk.X, pady=3)
+            self.device_firmware_checkbox = tk.Checkbutton(
+                device_firmware_frame,
+                text="OEM Firmware Updates",
+                variable=self.device_firmware,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.device_firmware_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.device_firmware_checkbox))
+            self.widget_fonts[self.device_firmware_checkbox] = task_font
+            device_firmware_indicator = tk.Label(device_firmware_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            device_firmware_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.device_firmware_checkbox, "Attempts to install missing OEM driver/firmware updates from Windows Update, then reports OEM support guidance.", self.theme)
+
+            # Install System Drivers
+            install_drivers_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            install_drivers_frame.pack(fill=tk.X, pady=3)
+            self.install_drivers_checkbox = tk.Checkbutton(
+                install_drivers_frame,
+                text="Install System Drivers",
+                variable=self.install_system_drivers,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.install_drivers_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.install_drivers_checkbox))
+            self.widget_fonts[self.install_drivers_checkbox] = task_font
+            install_drivers_indicator = tk.Label(install_drivers_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            install_drivers_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.install_drivers_checkbox,
+                    "Attempts to install missing drivers, then shows detailed driver inventory output.",
+                    self.theme)
+
+            # Windows Update Forensic Fixer
+            wu_forensic_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            wu_forensic_frame.pack(fill=tk.X, pady=3)
+            self.wu_forensic_checkbox = tk.Checkbutton(
+                wu_forensic_frame,
+                text="Windows Update Forensic Fixer",
+                variable=self.windows_update_forensic,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.wu_forensic_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.wu_forensic_checkbox))
+            self.widget_fonts[self.wu_forensic_checkbox] = task_font
+            wu_forensic_indicator = tk.Label(wu_forensic_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            wu_forensic_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.wu_forensic_checkbox,
+                    "Diagnoses stuck update phases, repairs update service state, and applies targeted remediation.",
+                    self.theme)
+
+            # Driver Rollback Center
+            driver_rollback_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            driver_rollback_frame.pack(fill=tk.X, pady=3)
+            self.driver_rollback_checkbox = tk.Checkbutton(
+                driver_rollback_frame,
+                text="Driver Rollback Center (Snapshot + Guide)",
+                variable=self.driver_rollback_center,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.driver_rollback_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.driver_rollback_checkbox))
+            self.widget_fonts[self.driver_rollback_checkbox] = task_font
+            driver_rollback_indicator = tk.Label(driver_rollback_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            driver_rollback_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.driver_rollback_checkbox,
+                    "Creates driver rollback snapshots and a guided rollback workbook for recovery by device class.",
+                    self.theme)
+
+            # â"€â"€ ðŸ› ï¸ UTILITIES â"€â"€
+            utilities_header = tk.Label(self.additional_checkbox_frame, text="UTILITIES", font=section_font,
+                                        bg=self.theme['surface'], fg=self.theme['primary'], anchor=tk.W)
+            utilities_header.pack(fill=tk.X, pady=(14, 6))
+            self.widgets.append(('label', utilities_header))
+            self.widget_fonts[utilities_header] = section_font
+
+            # Chris Titus Utility
+            chris_titus_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            chris_titus_frame.pack(fill=tk.X, pady=3)
+            self.chris_titus_checkbox = tk.Checkbutton(
+                chris_titus_frame,
+                text="Chris Titus Windows Utility",
+                variable=self.chris_titus_utility,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.chris_titus_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.chris_titus_checkbox))
+            self.widget_fonts[self.chris_titus_checkbox] = task_font
+            chris_titus_indicator = tk.Label(chris_titus_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            chris_titus_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.chris_titus_checkbox, "Runs the Chris Titus Windows Utility script", self.theme)
+
+            # Debloat Windows
+            debloat_windows_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            debloat_windows_frame.pack(fill=tk.X, pady=3)
+            self.debloat_windows_checkbox = tk.Checkbutton(
+                debloat_windows_frame,
+                text="Debloat Windows",
+                variable=self.debloat_windows,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.debloat_windows_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.debloat_windows_checkbox))
+            self.widget_fonts[self.debloat_windows_checkbox] = task_font
+            debloat_windows_indicator = tk.Label(debloat_windows_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            debloat_windows_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.debloat_windows_checkbox,
+                    "Downloads and runs Raphire Win11Debloat with default settings.",
+                    self.theme)
+
+            # O&O ShutUp10
+            oo_shutup10_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            oo_shutup10_frame.pack(fill=tk.X, pady=3)
+            self.oo_shutup10_checkbox = tk.Checkbutton(
+                oo_shutup10_frame,
+                text="O&O ShutUp10 (Privacy Tool)",
+                variable=self.oo_shutup10,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.oo_shutup10_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.oo_shutup10_checkbox))
+            self.widget_fonts[self.oo_shutup10_checkbox] = task_font
+            oo_shutup10_indicator = tk.Label(oo_shutup10_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            oo_shutup10_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.oo_shutup10_checkbox,
+                    "Downloads and launches O&O ShutUp10 - a free privacy tool that lets you control Windows 10/11 telemetry, Cortana, and data collection settings.",
+                    self.theme)
+
+            # Sysinternals Autoruns
+            autoruns_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            autoruns_frame.pack(fill=tk.X, pady=3)
+            self.autoruns_checkbox = tk.Checkbutton(
+                autoruns_frame,
+                text="Sysinternals Autoruns",
+                variable=self.sysinternals_autoruns,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.autoruns_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.autoruns_checkbox))
+            self.widget_fonts[self.autoruns_checkbox] = task_font
+            autoruns_indicator = tk.Label(autoruns_frame, text="●", font=('Segoe UI', 10),
+                                          bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            autoruns_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.autoruns_checkbox, "Downloads and launches Sysinternals Autoruns to manage startup programs.", self.theme)
+
+            # Sysinternals Process Explorer
+            procexp_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            procexp_frame.pack(fill=tk.X, pady=3)
+            self.procexp_checkbox = tk.Checkbutton(
+                procexp_frame,
+                text="Sysinternals Process Explorer",
+                variable=self.sysinternals_procexp,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.procexp_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.procexp_checkbox))
+            self.widget_fonts[self.procexp_checkbox] = task_font
+            procexp_indicator = tk.Label(procexp_frame, text="●", font=('Segoe UI', 10),
+                                         bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            procexp_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.procexp_checkbox, "Downloads and launches Sysinternals Process Explorer for advanced process management.", self.theme)
+
+            # Storage Analyzer
+            storage_sence_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            storage_sence_frame.pack(fill=tk.X, pady=3)
+            self.storage_sence_checkbox = tk.Checkbutton(
+                storage_sence_frame,
+                text="WinMend Storage Analyzer",
+                variable=self.storage_sence,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.storage_sence_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.storage_sence_checkbox))
+            self.widget_fonts[self.storage_sence_checkbox] = task_font
+            storage_sence_indicator = tk.Label(storage_sence_frame, text="●", font=('Segoe UI', 10),
+                                               bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            storage_sence_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.storage_sence_checkbox, "Custom Storage Analyzer Created By EAWTECH", self.theme)
+
+            # Activate Windows/Change Product Key
+            activate_windows_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            activate_windows_frame.pack(fill=tk.X, pady=3)
+            self.activate_windows_checkbox = tk.Checkbutton(
+                activate_windows_frame,
+                text="Activate Windows/Change Product Key",
+                variable=self.activate_windows,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.activate_windows_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.activate_windows_checkbox))
+            self.widget_fonts[self.activate_windows_checkbox] = task_font
+            activate_windows_indicator = tk.Label(
+                activate_windows_frame, text="●", font=('Segoe UI', 10),
+                bg=self.theme['surface'], fg=self.theme['user_indicator']
+            )
+            activate_windows_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.activate_windows_checkbox,
+                    "Activates Windows using a product key via slmgr.vbs", self.theme)
+
+            # AutoPilot CSV
+            autopilot_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            autopilot_frame.pack(fill=tk.X, pady=3)
+            self.autopilot_csv_checkbox = tk.Checkbutton(
+                autopilot_frame,
+                text="Create AutoPilot CSV",
+                variable=self.autopilot_csv,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.autopilot_csv_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.autopilot_csv_checkbox))
+            self.widget_fonts[self.autopilot_csv_checkbox] = task_font
+            autopilot_indicator = tk.Label(autopilot_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                           fg=self.theme['admin_indicator'])
+            autopilot_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.autopilot_csv_checkbox, "Creates an AutoPilot CSV for deployment", self.theme)
+
+            # Manual Guardrail Restore Point
+            restore_guardrail_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            restore_guardrail_frame.pack(fill=tk.X, pady=3)
+            self.restore_guardrail_checkbox = tk.Checkbutton(
+                restore_guardrail_frame,
+                text="Create Restore Point (Guardrail)",
+                variable=self.create_restore_point_guardrail,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.restore_guardrail_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.restore_guardrail_checkbox))
+            self.widget_fonts[self.restore_guardrail_checkbox] = task_font
+            restore_guardrail_indicator = tk.Label(restore_guardrail_frame, text="●", font=('Segoe UI', 10),
+                                                   bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            restore_guardrail_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.restore_guardrail_checkbox,
+                    "Creates a manual System Restore checkpoint to use as a recovery guardrail.",
+                    self.theme)
+
+            # Reboot warning light-bar (right panel footer)
+            # A fixed-height wrapper (pack_propagate=False) always occupies the
+            # same vertical space so the outer layout NEVER reflows regardless of
+            # whether the inner label is shown or hidden.  note_label is
+            # pack()/pack_forget() *inside* the wrapper only — zero flash.
+            note_font = ('Bahnschrift SemiBold', 9)
+            _note_hidden_bg = self.theme.get('glass_tint', self.theme.get('surface', '#162742'))
+            self.note_wrapper = tk.Frame(
+                self.additional_task_frame,
+                height=32,
+                bg=_note_hidden_bg,
+                bd=0, highlightthickness=0
+            )
+            self.note_wrapper.pack(anchor=tk.W, pady=(10, 0), fill=tk.X)
+            self.note_wrapper.pack_propagate(False)   # fixed height — never grows
+            self.note_label = tk.Label(
+                self.note_wrapper,
+                text="  A Reboot Will Be Required  ",
+                font=note_font,
+                fg='#1A1300',
+                bg=self.theme['user_indicator'],
+                padx=10,
+                pady=4
+            )
+            self.widgets.append(('label', self.note_label))
+            self.widget_fonts[self.note_label] = note_font
+            # note_label starts UN-packed (hidden). _update_reboot_notice()
+            # calls pack()/pack_forget() inside the wrapper as needed.
+
+            # App Settings (Left Column)
+            # Stop Background Apps
+            stop_apps_frame = tk.Frame(self.app_checkbox_frame, bg=self.theme['surface'])
+            stop_apps_frame.pack(fill=tk.X, pady=3)
+            self.stop_background_apps_checkbox = tk.Checkbutton(
+                stop_apps_frame,
+                text="Stop Background Apps",
+                variable=self.stop_background_apps_var,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.stop_background_apps_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.stop_background_apps_checkbox))
+            self.widget_fonts[self.stop_background_apps_checkbox] = task_font
+            stop_apps_indicator = tk.Label(stop_apps_frame, text="●", font=('Segoe UI', 10), bg=self.theme['surface'],
+                                           fg=self.theme['user_indicator'])
+            stop_apps_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.stop_background_apps_checkbox, "Stops unnecessary background applications", self.theme)
+
+            # Disable Startup Apps
+            startup_apps_frame = tk.Frame(self.app_checkbox_frame, bg=self.theme['surface'])
+            startup_apps_frame.pack(fill=tk.X, pady=3)
+            self.disable_startup_apps_checkbox = tk.Checkbutton(
+                startup_apps_frame,
+                text="Optimize Startup Apps",
+                variable=self.disable_startup_apps_var,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.disable_startup_apps_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.disable_startup_apps_checkbox))
+            self.widget_fonts[self.disable_startup_apps_checkbox] = task_font
+            startup_apps_indicator = tk.Label(startup_apps_frame, text="●", font=('Segoe UI', 10),
+                                              bg=self.theme['surface'], fg=self.theme['user_indicator'])
+            startup_apps_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.disable_startup_apps_checkbox, "Disables non-essential startup items", self.theme)
+
+            # Update Apps
+            update_apps_frame = tk.Frame(self.app_checkbox_frame, bg=self.theme['surface'])
+            update_apps_frame.pack(fill=tk.X, pady=3)
+            self.update_apps_checkbox = tk.Checkbutton(
+                update_apps_frame,
+                text="Update Apps (Winget)",
+                variable=self.update_apps,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.update_apps_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.update_apps_checkbox))
+            self.widget_fonts[self.update_apps_checkbox] = task_font
+            update_apps_indicator = tk.Label(update_apps_frame, text="●", font=('Segoe UI', 10),
+                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            update_apps_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.update_apps_checkbox, "Updates internal applications using WinGet", self.theme)
+
+            # Action buttons frame (Premium layout with generous spacing)
+            self.button_frame = tk.Frame(
+                self.main_container,
+                bg=self.theme['bg'],
+                highlightthickness=0,
+                bd=0
+            )
+            self.button_frame.pack(fill=tk.X, pady=(8, 24))
+            self.widgets.append(('frame', self.button_frame))
+
+            run_button_font = ('TT Lakes Neue Trial', 12)
+            self.run_button = tk.Button(
+                self.button_frame,
+                text="  RUN SELECTED TASKS  ",
+                font=run_button_font,
+                command=self.run_selected_tasks,
+                bg=self.theme['button_bg'],
+                fg=self.theme['button_fg'],
+                activebackground=self.theme['primary'],
+                activeforeground=self.theme['button_fg'],
+                bd=0,
+                padx=32,
+                pady=14,
+                cursor="hand2",
+                relief=tk.FLAT,
+                highlightthickness=1,
+                highlightbackground=self.theme['glass_edge']
+            )
+            self.run_button.pack(side=tk.LEFT, padx=(0, 16))
+            self.widgets.append(('button', self.run_button))
+            self.widget_fonts[self.run_button] = run_button_font
+
+            exit_button_font = ('TT Lakes Neue Trial', 12)
+            self.exit_button = tk.Button(
+                self.button_frame,
+                text="  EXIT  ",
+                font=exit_button_font,
+                command=self.root.quit,
+                bg=self.theme['button_secondary_bg'],
+                fg=self.theme['button_secondary_fg'],
+                activebackground=self.theme['select_bg'],
+                bd=0,
+                padx=32,
+                pady=14,
+                cursor="hand2",
+                relief=tk.FLAT,
+                highlightthickness=1,
+                highlightbackground=self.theme['glass_edge']
+            )
+            self.exit_button.pack(side=tk.LEFT)
+            self.widgets.append(('button', self.exit_button))
+            self.widget_fonts[self.exit_button] = exit_button_font
+
+            # Install Needed Apps Button
+            install_apps_button_font = ('TT Lakes Neue Trial', 12)
+            self.install_apps_button = tk.Button(
+                self.button_frame,
+                text="  INSTALL APPS  ",
+                font=install_apps_button_font,
+                command=self.open_install_apps_window,
+                bg=self.theme['button_bg'],
+                fg=self.theme['button_fg'],
+                activebackground=self.theme['select_bg'],
+                bd=0,
+                padx=32,
+                pady=14,
+                cursor="hand2",
+                relief=tk.FLAT,
+                highlightthickness=1,
+                highlightbackground=self.theme['glass_edge']
+            )
+            self.install_apps_button.pack(side=tk.LEFT, padx=(16, 0))
+            self.widgets.append(('button', self.install_apps_button))
+            self.widget_fonts[self.install_apps_button] = install_apps_button_font
+
+            # Progress section (Integrated look)
+            self.progress_section = tk.Frame(self.main_container, bg=self.theme['bg'])
+            self.widgets.append(('frame', self.progress_section))
+
+            current_task_font = ('Chopsic', 10)
+            self.current_task_label = tk.Label(
+                self.progress_section,
+                text="Current Task: Ready",
+                font=current_task_font,
+                bg=self.theme['bg'],
+                fg=self.theme['primary']
+            )
+            self.current_task_label.pack(anchor=tk.W, pady=(0, 5))
+            self.widgets.append(('label', self.current_task_label))
+            self.widget_fonts[self.current_task_label] = current_task_font
+
+            progress_bar_frame = tk.Frame(self.progress_section, bg=self.theme['bg'])
+            progress_bar_frame.pack(fill=tk.X, pady=(0, 10))
+            self.widgets.append(('frame', progress_bar_frame))
+
+            self.progress_bar = ttk.Progressbar(
+                progress_bar_frame,
+                orient=tk.HORIZONTAL,
+                mode='indeterminate'
+            )
+            self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('progress', self.progress_bar))
+
+            self.progress_percent_label = tk.Label(
+                progress_bar_frame,
+                text="",
+                font=('Segoe UI', 10),
+                bg=self.theme['bg'],
+                fg=self.theme['fg']
+            )
+            self.progress_percent_label.pack(side=tk.LEFT, padx=(10, 0))
+            self.widgets.append(('label', self.progress_percent_label))
+
+            # Log Area (Professional terminal look)
+            self.log_container = tk.Frame(self.main_container, bg=self.theme['bg'])
+            self.log_container.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('frame', self.log_container))
+
+            log_label_font = ('NIKEA', 11)
+            self.log_label = tk.Label(
+                self.log_container,
+                text="ACTIVITY LOG",
+                font=log_label_font,
+                bg=self.theme['bg'],
+                fg=self.theme['fg']
+            )
+            self.log_label.pack(anchor=tk.W, pady=(0, 5))
+            self.widgets.append(('label', self.log_label))
+            self.widget_fonts[self.log_label] = log_label_font
+
+            self.log_frame = tk.Frame(self.log_container, bd=0, relief=tk.FLAT, bg=self.theme['card_border'],
+                                      highlightbackground=self.theme['task_border'], highlightthickness=2)
+            self.log_frame.pack(fill=tk.BOTH, expand=True)
+            self.widgets.append(('frame', self.log_frame))
+
+            log_area_font = ('Exo 2', 10)
+            self.log_area = tk.Text(
+                self.log_frame,
+                wrap=tk.WORD,
+                font=log_area_font,
+                height=35,
+                padx=16,
+                pady=14,
+                bg=self.theme['surface'],
+                fg=self.theme['log_text_fg'],
+                bd=0,
+                highlightthickness=0,
+                spacing1=2,
+                spacing3=2
+            )
+            self.log_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.widgets.append(('log', self.log_area))
+            self.widget_fonts[self.log_area] = log_area_font
+
+            self.log_scrollbar = ttk.Scrollbar(
+                self.log_frame,
+                orient=tk.VERTICAL,
+                command=self.log_area.yview
+            )
+            self.log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self.log_area.config(yscrollcommand=self.log_scrollbar.set)
+
+            # Premium styling for ttk widgets
+            self.style = ttk.Style()
+            self.style.theme_use('clam')
+            self.style.configure(
+                "Horizontal.TProgressbar",
+                thickness=6,
+                troughcolor=self.theme['surface_alt'],
+                background=self.theme['primary'],
+                bordercolor=self.theme['surface_alt'],
+                lightcolor=self.theme['primary'],
+                darkcolor=self.theme['primary'],
+                borderwidth=0
+            )
+
+            self._harden_checkbuttons()
+            self._enable_clickable_option_rows()
+            self._apply_2090_design()
+            self._style_task_rows()
+            self._install_task_state_watchers()
+            self._refresh_task_indicator_leds(force=True)
+            self._update_reboot_notice()
+            self._update_smart_search_recommendations()
+            self.update_all_fonts()
+
+            # Start holographic UI live elements
+            self._clock_job = self.root.after(1000, self._update_clock)
+            self._animation_job = self.root.after(43, self._animation_tick)
+            self._schedule_cosmic_background_refresh()
+            self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+            # Start queue processing immediately to capture all background task logs
+            self.root.after(100, self.process_queue)
+
+        except Exception as e:
+            raise
+
+    def _harden_checkbuttons(self):
+        """Ensure checkbuttons never enter tri-state/disabled interaction mode."""
+        try:
+            for widget_type, widget in self.widgets:
+                if widget_type == 'checkbutton':
+                    widget.configure(
+                        state=tk.NORMAL,
+                        onvalue=True,
+                        offvalue=False,
+                        takefocus=0,
+                        cursor="hand2"
+                    )
+        except Exception:
+            pass
+
+    def _enable_clickable_option_rows(self):
+        """Allow clicking option text/row/icon to toggle the related checkbox."""
+        try:
+            for widget_type, widget in self.widgets:
+                if widget_type != 'checkbutton':
+                    continue
+
+                checkbutton = widget
+                row_frame = checkbutton.master
+
+                def toggle_from_row(event, cb=checkbutton, rf=row_frame):
+                    # 1. Toggle the variable
+                    try:
+                        state = str(cb.cget('state')).lower()
+                        if state != 'disabled':
+                            cb.invoke()
+                    except Exception:
+                        pass
+
+                    # 2. Apply visual feedback DIRECTLY on this row — no
+                    #    dependency on _task_led_rows or any cached list.
+                    try:
+                        var_name = cb.cget('variable')
+                        is_on = str(self.root.getvar(var_name)).lower() in (
+                            '1', 'true', 'yes', 'on')
+
+                        BORDER   = '#4FC8E8'   # light-blue border
+                        INTERIOR = '#0E3D6B'   # selected-row interior
+                        glass    = self.theme.get('glass_tint', '#162742')
+
+                        if is_on:
+                            rf.configure(bg=BORDER)
+                            cb.configure(
+                                fg='#FFFFFF', bg=INTERIOR,
+                                selectcolor=INTERIOR,
+                                activebackground=INTERIOR)
+                            for child in rf.winfo_children():
+                                if isinstance(child, tk.Label) and child is not cb:
+                                    child.configure(
+                                        text='✔', fg=BORDER, bg=INTERIOR,
+                                        font=('Segoe UI', 10, 'bold'))
+                                    break
+                        else:
+                            task_fg = self.theme.get('task_fg', '#8899AA')
+                            rf.configure(bg=glass)
+                            cb.configure(
+                                fg=task_fg, bg=glass,
+                                selectcolor=glass,
+                                activebackground=glass)
+                            for child in rf.winfo_children():
+                                if isinstance(child, tk.Label) and child is not cb:
+                                    orig = getattr(child, '_original_dot_color',
+                                                   self.theme.get('primary', '#7FE4FF'))
+                                    child.configure(
+                                        text='●', bg=glass, fg=orig,
+                                        font=('Segoe UI', 10, 'bold'))
+                                    break
+                    except Exception:
+                        pass
+
+                    # Write the new state into the LED cache immediately so the
+                    # 1 ms-delayed _refresh_task_indicator_leds pass sees
+                    # cached == actual and skips this row entirely — prevents
+                    # the double-repaint flash on the right column.
+                    try:
+                        if hasattr(self, '_task_led_state_cache'):
+                            self._task_led_state_cache[
+                                cb.cget('variable')] = is_on
+                    except Exception:
+                        pass
+
+                    return "break"
+
+                # Force any click on checkbox (including text area) to toggle once
+                checkbutton.bind('<Button-1>', toggle_from_row)
+
+                # Also allow clicking anywhere in the option row, including the icon label
+                row_frame.bind('<Button-1>', toggle_from_row)
+                for child in row_frame.winfo_children():
+                    if child is not checkbutton:
+                        child.bind('<Button-1>', toggle_from_row)
+        except Exception:
+            pass
+
+    def _style_task_rows(self):
+        """Apply futuristic projected-row styling to all task checkbuttons.
+
+        Border strategy: each row_frame's bg colour acts as the border.
+        The checkbutton is given 2 px of external pack padding so the
+        frame's background peeks around all four edges — no dependency on
+        highlightbackground, which is unreliable on Windows inside a
+        scrolled-canvas window.
+        """
+        self._task_led_rows = []
+        for widget_type, widget in self.widgets:
+            if widget_type != 'checkbutton':
+                continue
+            try:
+                checkbutton = widget
+                row_frame = checkbutton.master
+
+                # Initialise the border frame — deselected state has same bg
+                # as the parent so the 2-px gap is invisible until selected.
+                try:
+                    row_frame.configure(
+                        bg=self.theme['glass_tint'],
+                        highlightthickness=0,
+                        relief=tk.FLAT,
+                        bd=0
+                    )
+                except Exception:
+                    pass
+
+                # Style the checkbutton.  Internal padding is reduced by 2 px
+                # each side to compensate for the 2 px external pack padding
+                # added below — keeping total row height identical.
+                try:
+                    original_label = getattr(checkbutton, "_original_plain_text",
+                                             checkbutton.cget("text"))
+                    checkbutton._original_plain_text = original_label
+                    checkbutton.configure(
+                        text=original_label,
+                        indicatoron=False,
+                        justify=tk.LEFT,
+                        relief=tk.FLAT,
+                        bd=0,
+                        padx=4,   # was 6; 2 px moved to external pack padding
+                        pady=2,   # was 4; 2 px moved to external pack padding
+                        bg=self.theme['glass_tint'],
+                        fg=self.theme['task_fg'],
+                        activebackground=self.theme['glass_tint'],
+                        activeforeground=self.theme['fg'],
+                        selectcolor=self.theme['glass_tint'],
+                        highlightthickness=0
+                    )
+                    # 2 px external pack padding — this is what exposes the
+                    # row_frame background as a visible border when selected.
+                    checkbutton.pack_configure(padx=2, pady=2)
+                except Exception:
+                    pass
+
+                indicator_label = None
+                base_color = self.theme.get('primary', '#7FE4FF')
+                for child in row_frame.winfo_children():
+                    if isinstance(child, tk.Label) and child is not checkbutton:
+                        indicator_label = child
+                        break
+
+                if indicator_label:
+                    try:
+                        base_color = getattr(indicator_label, '_original_dot_color',
+                                             None) or indicator_label.cget('fg')
+                        indicator_label._original_dot_color = base_color
+                        indicator_label.configure(
+                            text="●",
+                            bg=self.theme['glass_tint'],
+                            fg=base_color,
+                            font=('Segoe UI', 10, 'bold')
+                        )
+                        # Match vertical rhythm so top/bottom gap is uniform.
+                        indicator_label.pack_configure(pady=2)
+                    except Exception:
+                        pass
+
+                # Register every row — with or without an indicator label
+                self._task_led_rows.append((checkbutton, indicator_label, base_color, row_frame))
+            except Exception:
+                continue
+
+    def _apply_2090_design(self):
+        """Force a cohesive frosted-glass 2090 visual pass across core surfaces."""
+        try:
+            def _style_glass_card(widget, emphasize=False):
+                if not widget:
+                    return
+                try:
+                    widget.configure(
+                        bg=self.theme['glass_tint'],
+                        highlightbackground=self.theme['glass_glow'] if emphasize else self.theme['glass_edge'],
+                        highlightcolor=self.theme['glass_glow'],
+                        highlightthickness=2 if emphasize else 1,
+                        bd=0
+                    )
+                    # Simulated layered glass: thin light edge + inner shadow edge.
+                    top_line = getattr(widget, "_glass_top_line", None)
+                    if not top_line or not top_line.winfo_exists():
+                        top_line = tk.Frame(widget, height=1, bd=0)
+                        top_line.place(x=1, y=1, relwidth=1, width=-2)
+                        widget._glass_top_line = top_line
+                    top_line.configure(bg=self.theme['glass_glow'])
+
+                    bottom_line = getattr(widget, "_glass_bottom_line", None)
+                    if not bottom_line or not bottom_line.winfo_exists():
+                        bottom_line = tk.Frame(widget, height=1, bd=0)
+                        bottom_line.place(relx=0, rely=1, x=1, y=-2, relwidth=1, width=-2)
+                        widget._glass_bottom_line = bottom_line
+                    bottom_line.configure(bg=self.theme['task_border'])
+                except Exception:
+                    pass
+
+            panel_specs = [
+                getattr(self, 'task_frame', None),
+                getattr(self, 'app_frame', None),
+                getattr(self, 'additional_task_frame', None),
+            ]
+            for panel in panel_specs:
+                if not panel:
+                    continue
+                panel.configure(bg=self.theme['glass_tint'], fg=self.theme['fg'])
+                _style_glass_card(panel, emphasize=True)
+
+            for attr in ['checkbox_frame', 'app_checkbox_frame', 'additional_checkbox_frame']:
+                frame = getattr(self, attr, None)
+                if frame:
+                    frame.configure(bg=self.theme['glass_tint'])
+
+            if hasattr(self, 'header_frame'):
+                self.header_frame.configure(
+                    bg=self.theme['header_bg'],
+                    highlightbackground=self.theme['header_bg'],
+                    highlightthickness=0
+                )
+            if hasattr(self, 'monitor_frame'):
+                self.monitor_frame.configure(bg=self.theme['header_bg'])
+            if hasattr(self, 'resource_frame'):
+                self.resource_frame.configure(bg=self.theme['header_bg'])
+
+            if hasattr(self, 'title_label'):
+                self.title_label.configure(font=('Chopsic', 34), fg=self.theme['fg'], bg=self.theme['header_bg'])
+            if hasattr(self, 'clock_label'):
+                self.clock_label.configure(font=('Bahnschrift Light', 34), fg=self.theme['fg'], bg=self.theme['header_bg'])
+
+            if hasattr(self, 'button_frame'):
+                self.button_frame.configure(bg=self.theme['bg'], highlightthickness=0, bd=0)
+            if hasattr(self, 'smart_search_frame'):
+                self.smart_search_frame.configure(
+                    bg=self.theme['glass_tint'],
+                    highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                    highlightcolor=self.theme.get('glass_glow', '#7FE4FF'),
+                    highlightthickness=2
+                )
+                _style_glass_card(self.smart_search_frame, emphasize=True)
+                self.smart_search_frame.configure(
+                    highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                    highlightcolor=self.theme.get('glass_glow', '#7FE4FF'),
+                    highlightthickness=2
+                )
+            if hasattr(self, 'smart_search_title'):
+                self.smart_search_title.configure(bg=self.theme['glass_tint'], fg=self.theme['primary'])
+            if hasattr(self, 'smart_recommendation_label'):
+                self.smart_recommendation_label.configure(bg=self.theme['glass_tint'], fg=self.theme['label_fg_dim'])
+            if hasattr(self, 'smart_search_entry'):
+                self.smart_search_entry.configure(bg=self.theme['entry_bg'], fg=self.theme['entry_fg'],
+                                                 insertbackground=self.theme['fg'],
+                                                 highlightbackground=self.theme.get('glass_glow', '#7FE4FF'),
+                                                 highlightcolor=self.theme.get('glass_glow', '#7FE4FF'),
+                                                 highlightthickness=1)
+        except Exception:
+            pass
+
+    def _refresh_task_indicator_leds(self, force=False):
+        """Synchronise row border, background, and text with selection state.
+
+        Selected visual (three independent cues so at least one is always
+        noticed regardless of display calibration):
+          1. Light-blue (#4FC8E8) border — the row_frame bg peeks through the
+             2-px external pack gap around the checkbutton.
+          2. Noticeably brighter row interior (#0E3D6B vs unselected #162742).
+          3. Bright-white text + cyan indicator dot.
+
+        Deselected: uniform dark surface, dim text — same as app background.
+        """
+        if not hasattr(self, '_task_led_rows'):
+            self._task_led_rows = []
+        if not hasattr(self, '_task_led_state_cache'):
+            self._task_led_state_cache = {}
+
+        BORDER   = '#4FC8E8'   # light blue — shown as 2-px frame edge
+        INTERIOR = '#0E3D6B'   # clearly brighter than glass_tint #162742
+        TEXT_ON  = '#FFFFFF'   # pure white — unmissable against dark interior
+        DOT_ON   = '#4FC8E8'   # matching cyan dot
+        glass    = self.theme['glass_tint']   # unselected bg  (#162742)
+
+        for checkbutton, indicator_label, base_color, row_frame in self._task_led_rows:
+            try:
+                var_name   = checkbutton.cget('variable')
+                raw_value  = str(self.root.getvar(var_name)).lower()
+                is_selected = raw_value in ('1', 'true', 'yes', 'on')
+
+                if not force and self._task_led_state_cache.get(var_name) == is_selected:
+                    continue
+
+                self._task_led_state_cache[var_name] = is_selected
+
+                if is_selected:
+                    row_frame.configure(bg=BORDER,   highlightthickness=0, bd=0, relief=tk.FLAT)
+                    checkbutton.configure(
+                        bg=INTERIOR, selectcolor=INTERIOR, activebackground=INTERIOR,
+                        fg=TEXT_ON,  highlightthickness=0
+                    )
+                    if indicator_label is not None:
+                        indicator_label.configure(
+                            bg=INTERIOR, fg=DOT_ON,
+                            text='✔', font=('Segoe UI', 10, 'bold')
+                        )
+                else:
+                    row_frame.configure(bg=glass,    highlightthickness=0, bd=0, relief=tk.FLAT)
+                    checkbutton.configure(
+                        bg=glass,    selectcolor=glass,    activebackground=glass,
+                        fg=self.theme['task_fg'], highlightthickness=0
+                    )
+                    if indicator_label is not None:
+                        indicator_label.configure(
+                            bg=glass, fg=base_color,
+                            text='●', font=('Segoe UI', 10, 'bold')
+                        )
+            except Exception:
+                continue
+
+    def _update_reboot_notice(self):
+        """Show/hide the reboot banner inside its fixed-height wrapper.
+
+        note_wrapper always occupies the same vertical space (pack_propagate=False),
+        so pack()/pack_forget() on note_label inside it never causes outer reflow
+        or a UI flash on the right column."""
+        try:
+            reboot_vars = [
+                self.repair_system,
+                self.windows_updates,
+                self.device_firmware,
+                self.chk_dsk,
+                self.reset_win_update,
+                self.toggle_safe_mode,
+                self.boot_advanced_options,
+            ]
+            needs_reboot = any(var.get() for var in reboot_vars)
+
+            # Guard: skip when state hasn't changed — avoids unnecessary repaints.
+            if getattr(self, '_last_reboot_notice_state', None) == needs_reboot:
+                return
+            self._last_reboot_notice_state = needs_reboot
+
+            # Keep wrapper bg in sync with the current theme so the 32 px
+            # reserved slot is invisible when the label is hidden.
+            hidden_bg = self.theme.get('glass_tint', self.theme.get('surface', '#162742'))
+            if hasattr(self, 'note_wrapper'):
+                self.note_wrapper.configure(bg=hidden_bg)
+
+            if needs_reboot:
+                self.note_label.configure(
+                    text="  A Reboot Will Be Required  ",
+                    fg='#1A1300',
+                    bg=self.theme['user_indicator']
+                )
+                if not self.note_label.winfo_ismapped():
+                    self.note_label.pack(anchor=tk.W)
+            else:
+                if self.note_label.winfo_ismapped():
+                    self.note_label.pack_forget()
+        except Exception:
+            pass
+
+    def _queue_state_visual_refresh(self):
+        """Debounce expensive visual refresh calls to avoid UI jank."""
+        try:
+            if hasattr(self, '_state_visual_refresh_job') and self._state_visual_refresh_job:
+                self.root.after_cancel(self._state_visual_refresh_job)
+        except Exception:
+            pass
+        self._state_visual_refresh_job = self.root.after(1, self._run_state_visual_refresh)
+
+    def _run_state_visual_refresh(self):
+        self._refresh_task_indicator_leds()
+        self._update_reboot_notice()
+
+    def _install_task_state_watchers(self):
+        """Attach variable observers so UI state updates only when selections change."""
+        try:
+            if hasattr(self, '_task_trace_handles') and self._task_trace_handles:
+                return
+            self._task_trace_handles = []
+
+            def _on_var_change(*_args):
+                self._queue_state_visual_refresh()
+
+            for _task_id, var in self._task_var_map().items():
+                try:
+                    trace_id = var.trace_add("write", _on_var_change)
+                    self._task_trace_handles.append((var, trace_id))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def _schedule_cosmic_background_refresh(self):
+        """Debounce background rendering for smooth resize/scroll performance."""
+        if not hasattr(self, 'columns_canvas'):
+            return
+        try:
+            if hasattr(self, '_cosmic_refresh_job') and self._cosmic_refresh_job:
+                self.root.after_cancel(self._cosmic_refresh_job)
+        except Exception:
+            pass
+        self._cosmic_refresh_job = self.root.after(300, self._setup_cosmic_background)
+
+    def _task_var_map(self):
+        """Map task ids to their BooleanVar controls. Cached after first call."""
+        if getattr(self, "_cached_task_var_map", None) is not None:
+            return self._cached_task_var_map
+        self._cached_task_var_map = {
+            "clean_temp": self.clean_temp,
+            "disk_cleanup": self.disk_cleanup,
+            "disable_fast_startup": self.disable_fast_startup,
+            "update_apps": self.update_apps,
+            "windows_updates": self.windows_updates,
+            "device_firmware": self.device_firmware,
+            "repair_system": self.repair_system,
+            "chk_dsk": self.chk_dsk,
+            "windows_adjustments": self.windows_adjustments,
+            "flush_dns": self.flush_dns,
+            "ipconfig_all": self.ipconfig_all,
+            "change_dns": self.change_dns,
+            "reset_network": self.reset_network,
+            "network_adapter_reset": self.network_adapter_reset,
+            "ping_test": self.ping_test,
+            "deep_network_remediation": self.deep_network_remediation,
+            "network_diagnostic_bundle": self.network_diagnostic_bundle,
+            "reset_hosts": self.reset_hosts,
+            "autopilot_csv": self.autopilot_csv,
+            "chris_titus_utility": self.chris_titus_utility,
+            "storage_sence": self.storage_sence,
+            "stop_background_apps": self.stop_background_apps_var,
+            "disable_startup_apps": self.disable_startup_apps_var,
+            "oo_shutup10": self.oo_shutup10,
+            "edge_performance": self.edge_performance,
+            "disable_gaming_features": self.disable_gaming_features,
+            "enable_gaming_features": self.enable_gaming_features,
+            "install_system_drivers": self.install_system_drivers,
+            "debloat_windows": self.debloat_windows,
+            "rebuild_icon_cache": self.rebuild_icon_cache,
+            "component_cleanup": self.component_cleanup,
+            "clear_print_spooler": self.clear_print_spooler,
+            "toggle_safe_mode": self.toggle_safe_mode,
+            "boot_advanced_options": self.boot_advanced_options,
+            "export_wifi_passwords": self.export_wifi_passwords,
+            "rebuild_font_cache": self.rebuild_font_cache,
+            "reset_search_index": self.reset_search_index,
+            "defrag_optimize": self.defrag_optimize,
+            "bsod_triage": self.bsod_triage,
+            "minidump_analyzer": self.minidump_analyzer,
+            "windows_update_forensic": self.windows_update_forensic,
+            "reset_win_update": self.reset_win_update,
+            "driver_rollback_center": self.driver_rollback_center,
+            "smart_malware_remediation": self.smart_malware_remediation,
+            "defender_scan": self.defender_scan,
+            "clear_browser_cache": self.clear_browser_cache,
+            "msrt_scan": self.msrt_scan,
+            "event_log_viewer": self.event_log_viewer,
+            "sysinternals_autoruns": self.sysinternals_autoruns,
+            "sysinternals_procexp": self.sysinternals_procexp,
+            "service_dependency_repair": self.service_dependency_repair,
+            "create_restore_point_guardrail": self.create_restore_point_guardrail,
+            "adjust_virtual_memory": self.adjust_virtual_memory,
+            "pc_report": self.pc_report
+        }
+        return self._cached_task_var_map
+
+    def _recommend_tasks_for_query(self, query):
+        """Return ranked task recommendations for vague symptom searches."""
+        q = (query or "").strip().lower()
+        q = re.sub(r"[^a-z0-9\s]", " ", q)
+        q = re.sub(r"\s+", " ", q).strip()
+        if not q:
+            return [], "Type symptoms like 'my network isn't working' or 'I got a BSOD'."
+
+        def contains_any(terms):
+            return any(t in q for t in terms)
+
+        rules = [
+            (["bloat", "bloatware", "debloat", "remove junk", "windows junk", "remove ads", "telemetry",
+              "clean windows install", "freshen windows", "decrapify"],
+             ["debloat_windows", "chris_titus_utility", "oo_shutup10", "clean_temp", "disk_cleanup"],
+             "Debloat and privacy cleanup"),
+            (["network", "internet", "wifi", "dns", "can't connect", "no internet", "ethernet"],
+             ["network_diagnostic_bundle", "flush_dns", "change_dns", "reset_network", "network_adapter_reset",
+              "ping_test", "reset_hosts", "deep_network_remediation"],
+             "Network recovery + diagnostics"),
+            (["slow internet", "high ping", "packet loss", "laggy internet", "disconnecting", "wifi drops"],
+             ["network_diagnostic_bundle", "ping_test", "network_adapter_reset", "flush_dns", "reset_network",
+              "change_dns", "deep_network_remediation"],
+             "Connectivity stabilization"),
+            (["bsod", "blue screen", "crash", "stop code", "kernel panic",
+              "random shutdown", "sudden restart", "restarts randomly",
+              "unexpected shutdown", "powers off randomly", "computer restarts",
+              "force restart"],
+             ["bsod_triage", "minidump_analyzer", "driver_rollback_center", "install_system_drivers",
+              "windows_updates", "repair_system", "chk_dsk", "event_log_viewer"],
+             "BSOD crash triage"),
+            (["update", "windows update", "kb", "failed update", "stuck update"],
+             ["windows_update_forensic", "windows_updates", "reset_win_update", "repair_system"],
+             "Windows Update repair"),
+            (["driver", "drivers", "gpu driver", "audio driver", "nic driver", "driver issue", "device manager"],
+             ["install_system_drivers", "device_firmware", "driver_rollback_center", "windows_updates", "pc_report"],
+             "Driver and firmware recovery"),
+            (["virus", "malware", "trojan", "hacked", "defender", "infected",
+              "ransomware", "keylogger", "suspicious activity", "unauthorized access",
+              "compromised", "rootkit"],
+             ["smart_malware_remediation", "defender_scan", "msrt_scan", "event_log_viewer",
+              "sysinternals_autoruns", "sysinternals_procexp", "chk_dsk",
+              "repair_system", "clear_browser_cache", "reset_win_update"],
+             "Malware remediation"),
+            (["popups", "browser hijack", "suspicious", "unwanted app", "adware", "spyware"],
+             ["smart_malware_remediation", "defender_scan", "msrt_scan", "clear_browser_cache", "event_log_viewer"],
+             "Suspicious activity cleanup"),
+            (["service", "won't start", "dependency", "failed service", "error 1068"],
+             ["service_dependency_repair", "event_log_viewer", "repair_system"],
+             "Service dependency recovery"),
+            (["slow", "lag", "performance", "stutter", "freezing", "frozen", "sluggish",
+              "running slow", "slow computer", "slow pc", "my computer is slow", "my pc is slow",
+              "takes long", "unresponsive", "lagging", "freeze", "hangs", "hanging"],
+             ["clean_temp", "disk_cleanup", "defrag_optimize", "windows_adjustments", "adjust_virtual_memory",
+              "component_cleanup", "disable_startup_apps", "stop_background_apps", "disable_fast_startup",
+              "chk_dsk", "repair_system", "install_system_drivers", "windows_updates"],
+             "Performance cleanup/tuning"),
+            (["startup", "boot slow", "slow boot", "takes forever to start", "long boot"],
+             ["disable_startup_apps", "stop_background_apps", "disable_fast_startup", "disk_cleanup",
+              "windows_adjustments"],
+             "Startup acceleration"),
+            (["printer", "printing", "print stuck", "print queue"],
+             ["clear_print_spooler", "service_dependency_repair", "event_log_viewer"],
+             "Print subsystem repair"),
+            (["search broken", "windows search", "indexing", "cant find files"],
+             ["reset_search_index", "service_dependency_repair", "event_log_viewer"],
+             "Search/index recovery"),
+            (["icons broken", "thumbnail", "icon cache", "blank icon"],
+             ["rebuild_icon_cache", "event_log_viewer"],
+             "Icon/thumbnail recovery"),
+            (["font issue", "fonts broken", "missing fonts"],
+             ["rebuild_font_cache", "event_log_viewer"],
+             "Font cache recovery"),
+            (["storage", "disk full", "no space", "cleanup space"],
+             ["disk_cleanup", "clean_temp", "component_cleanup", "storage_sence"],
+             "Storage cleanup"),
+            (["privacy", "telemetry", "tracking", "disable microsoft tracking"],
+             ["oo_shutup10", "debloat_windows", "chris_titus_utility"],
+             "Privacy hardening"),
+            (["edge slow", "edge issue", "microsoft edge"],
+             ["edge_performance", "clear_browser_cache", "windows_updates"],
+             "Edge/browser tune-up"),
+            (["gaming", "fps drop", "game lag", "stutter in games"],
+             ["enable_gaming_features", "windows_adjustments", "defrag_optimize", "pc_report"],
+             "Gaming stability tuning"),
+            (["wifi password", "forgot wifi", "saved wifi key"],
+             ["export_wifi_passwords"],
+             "Wi-Fi credential recovery"),
+            (["glitch", "glitching", "acting up", "acting strange", "acting weird",
+              "misbehaving", "buggy", "not working right", "random restart",
+              "randomly restarts", "keeps restarting", "unexpected restart",
+              "unexpected behavior", "strange behavior", "weird behavior",
+              "computer acting up", "pc acting up"],
+             ["repair_system", "chk_dsk", "install_system_drivers", "windows_updates",
+              "event_log_viewer", "bsod_triage", "driver_rollback_center",
+              "create_restore_point_guardrail"],
+             "System behavior repair"),
+            (["sfc", "dism", "system file", "corrupt file", "corrupted file",
+              "file corruption", "windows corruption", "corrupted windows",
+              "system corruption", "missing system files", "missing files",
+              "integrity check"],
+             ["repair_system", "chk_dsk", "component_cleanup", "windows_updates",
+              "event_log_viewer"],
+             "System file integrity"),
+            (["app crash", "application crash", "program crash", "software crash",
+              "crashing", "keeps crashing", "program closes", "app closes",
+              "not responding", "application freezes", "program freezes"],
+             ["repair_system", "install_system_drivers", "windows_updates",
+              "event_log_viewer", "chk_dsk", "driver_rollback_center"],
+             "Application stability repair"),
+            (["no sound", "audio not working", "sound not working", "audio broken",
+              "microphone not working", "mic broken", "speakers not working", "no audio",
+              "sound issue", "audio issue", "can't hear", "audio driver", "sound driver",
+              "hdmi no audio", "headphones not working", "volume not working"],
+             ["install_system_drivers", "device_firmware", "service_dependency_repair",
+              "windows_updates", "event_log_viewer", "driver_rollback_center"],
+             "Audio subsystem repair"),
+            (["cpu 100", "100% cpu", "high cpu", "cpu usage", "cpu maxed", "cpu spike",
+              "cpu overloaded", "high memory", "ram full", "memory usage", "out of memory",
+              "memory leak", "high ram", "ram maxed", "task manager", "processes using memory"],
+             ["sysinternals_procexp", "stop_background_apps", "disable_startup_apps",
+              "smart_malware_remediation", "windows_adjustments", "adjust_virtual_memory",
+              "clean_temp", "defender_scan"],
+             "High CPU/RAM usage"),
+            (["screen flickering", "display issue", "black screen", "blank screen",
+              "resolution wrong", "display driver", "graphics driver", "monitor issue",
+              "screen goes black", "flickering", "screen tearing", "no display",
+              "gpu issue", "graphics issue", "screen not working", "display not working"],
+             ["install_system_drivers", "driver_rollback_center", "device_firmware",
+              "windows_updates", "event_log_viewer", "bsod_triage"],
+             "Display/graphics repair"),
+            (["usb not working", "usb not recognized", "device not recognized",
+              "peripheral not working", "keyboard not working", "mouse not working",
+              "controller not working", "external drive not showing", "usb device",
+              "hardware not detected", "device unknown", "hardware issue"],
+             ["install_system_drivers", "device_firmware", "windows_updates",
+              "repair_system", "event_log_viewer", "service_dependency_repair"],
+             "USB/peripheral repair"),
+            (["browser slow", "browser crash", "browser not working", "browser freezing",
+              "chrome slow", "firefox slow", "browser issue", "web browser",
+              "browser not loading", "browser keeps closing", "slow browsing"],
+             ["clear_browser_cache", "edge_performance", "clean_temp",
+              "windows_updates", "smart_malware_remediation", "flush_dns"],
+             "Browser performance repair"),
+            (["overheating", "running hot", "computer hot", "laptop hot", "fan loud",
+              "fan spinning fast", "thermal", "cpu hot", "gpu hot", "temperature high",
+              "heat issue", "cooling issue", "fan noise"],
+             ["pc_report", "windows_adjustments", "stop_background_apps",
+              "clean_temp", "disable_startup_apps", "sysinternals_procexp"],
+             "Overheating / thermal cleanup"),
+            (["taskbar not working", "start menu broken", "start menu not opening",
+              "explorer crashed", "explorer not responding", "desktop not loading",
+              "right click not working", "context menu broken", "taskbar frozen",
+              "windows shell", "file explorer broken", "file explorer crash"],
+             ["repair_system", "rebuild_icon_cache", "windows_updates",
+              "event_log_viewer", "service_dependency_repair"],
+             "Shell/explorer repair"),
+            (["disk error", "hard drive", "hdd", "ssd", "drive error",
+              "bad sector", "100% disk", "disk usage", "disk failing",
+              "disk slow", "read error", "write error", "storage issue",
+              "drive not showing", "disk health"],
+             ["chk_dsk", "defrag_optimize", "storage_sence", "disk_cleanup",
+              "component_cleanup", "event_log_viewer"],
+             "Disk health and cleanup"),
+            (["outdated software", "update apps", "update software", "outdated apps",
+              "apps out of date", "software out of date", "update programs",
+              "winget", "install updates"],
+             ["update_apps", "windows_updates", "device_firmware"],
+             "App and software updates"),
+            (["safe mode", "boot safe", "need safe mode", "boot to bios",
+              "bios settings", "uefi", "boot menu", "advanced boot",
+              "recovery mode", "startup repair", "boot options", "boot into bios"],
+             ["toggle_safe_mode", "boot_advanced_options", "create_restore_point_guardrail",
+              "bsod_triage"],
+             "Safe mode / advanced boot"),
+            (["advanced diagnostics", "diagnose my pc", "what is wrong", "computer issue", "pc problem", "fix my computer",
+              "everything is broken", "help me fix my pc", "not sure", "unknown issue"],
+             ["create_restore_point_guardrail", "pc_report", "event_log_viewer", "network_diagnostic_bundle",
+              "windows_update_forensic", "service_dependency_repair", "repair_system"],
+             "General system triage"),
+        ]
+
+        scores = {}
+        reasons = []
+        for keywords, task_ids, reason in rules:
+            if contains_any(keywords):
+                reasons.append(reason)
+                for idx, task_id in enumerate(task_ids):
+                    scores[task_id] = scores.get(task_id, 0) + (100 - idx * 4)
+
+        # Additional token-level heuristics for extremely vague or short searches
+        token_map = {
+            "bloat": ["debloat_windows", "chris_titus_utility", "oo_shutup10"],
+            "junk": ["clean_temp", "disk_cleanup", "debloat_windows"],
+            "broken": ["pc_report", "event_log_viewer", "repair_system",
+                       "service_dependency_repair", "chk_dsk"],
+            "crash": ["bsod_triage", "minidump_analyzer", "driver_rollback_center",
+                      "repair_system"],
+            "slow": ["clean_temp", "disk_cleanup", "windows_adjustments", "adjust_virtual_memory",
+                     "disable_startup_apps", "stop_background_apps", "chk_dsk"],
+            "internet": ["network_diagnostic_bundle", "flush_dns", "reset_network"],
+            "wifi": ["network_diagnostic_bundle", "network_adapter_reset", "change_dns"],
+            "driver": ["install_system_drivers", "driver_rollback_center", "device_firmware"],
+            "update": ["windows_update_forensic", "windows_updates", "reset_win_update"],
+            "malware": ["smart_malware_remediation", "defender_scan", "msrt_scan",
+                        "sysinternals_autoruns"],
+            "virus": ["smart_malware_remediation", "defender_scan", "msrt_scan",
+                      "sysinternals_autoruns"],
+            "glitch": ["repair_system", "chk_dsk", "install_system_drivers",
+                       "event_log_viewer"],
+            "corrupt": ["repair_system", "chk_dsk", "component_cleanup"],
+            "freeze": ["clean_temp", "disk_cleanup", "adjust_virtual_memory",
+                       "chk_dsk", "repair_system"],
+            "error": ["repair_system", "event_log_viewer", "chk_dsk", "windows_updates"],
+            "sound": ["install_system_drivers", "service_dependency_repair",
+                      "device_firmware", "event_log_viewer"],
+            "audio": ["install_system_drivers", "service_dependency_repair",
+                      "device_firmware", "event_log_viewer"],
+            "display": ["install_system_drivers", "driver_rollback_center",
+                        "device_firmware", "windows_updates"],
+            "screen": ["install_system_drivers", "driver_rollback_center",
+                       "device_firmware", "event_log_viewer"],
+            "usb": ["install_system_drivers", "device_firmware",
+                    "windows_updates", "repair_system"],
+            "cpu": ["sysinternals_procexp", "stop_background_apps",
+                    "windows_adjustments", "smart_malware_remediation"],
+            "ram": ["adjust_virtual_memory", "stop_background_apps",
+                    "sysinternals_procexp", "clean_temp"],
+            "disk": ["chk_dsk", "defrag_optimize", "storage_sence", "disk_cleanup"],
+            "hot": ["pc_report", "stop_background_apps", "windows_adjustments",
+                    "clean_temp"],
+            "bios": ["boot_advanced_options", "device_firmware",
+                     "create_restore_point_guardrail"],
+            "browser": ["clear_browser_cache", "edge_performance", "clean_temp",
+                        "flush_dns"],
+            "taskbar": ["repair_system", "rebuild_icon_cache", "windows_updates",
+                        "event_log_viewer"],
+            "explorer": ["repair_system", "rebuild_icon_cache", "event_log_viewer",
+                         "service_dependency_repair"],
+        }
+        for token, task_ids in token_map.items():
+            if token in q:
+                for idx, task_id in enumerate(task_ids):
+                    scores[task_id] = scores.get(task_id, 0) + (80 - idx * 5)
+
+        # fallback heuristic for very vague search
+        if not scores:
+            fallback = [
+                "create_restore_point_guardrail", "pc_report", "event_log_viewer",
+                "network_diagnostic_bundle", "windows_update_forensic", "service_dependency_repair"
+            ]
+            for idx, task_id in enumerate(fallback):
+                scores[task_id] = 60 - idx * 6
+            reasons.append("General triage pack")
+
+        ranked = [t for t, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)]
+        ranked = ranked[:8]
+        reason_text = ", ".join(dict.fromkeys(reasons))
+        return ranked, reason_text
+
+    def _update_smart_search_recommendations(self):
+        """Update recommendation text based on symptom query."""
+        if not hasattr(self, 'smart_recommendation_label'):
+            return
+        task_name_map = {
+            "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
+            "flush_dns": "Flush DNS & Renew IP",
+            "change_dns": "Set Fast DNS",
+            "reset_network": "Reset Network Stack",
+            "network_adapter_reset": "Reset Network Adapters",
+            "ping_test": "Ping Test",
+            "reset_hosts": "Reset / Flush Hosts File",
+            "deep_network_remediation": "Deep Network Stack Remediation",
+            "bsod_triage": "One-Click BSOD Triage",
+            "minidump_analyzer": "MiniDump Analyzer",
+            "driver_rollback_center": "Driver Rollback Center",
+            "install_system_drivers": "Install System Drivers",
+            "windows_updates": "Check & Install Windows Updates",
+            "reset_win_update": "Reset Windows Update Components",
+            "device_firmware": "OEM Firmware Updates",
+            "repair_system": "Repair System",
+            "windows_update_forensic": "Windows Update Forensic Fixer",
+            "smart_malware_remediation": "Smart Malware Remediation Mode",
+            "defender_scan": "Windows Defender Full Scan",
+            "msrt_scan": "MSRT Quick Malware Scan",
+            "event_log_viewer": "View Recent Event Log Errors",
+            "clear_browser_cache": "Clear Browser Cache",
+            "disable_startup_apps": "Optimize Startup Apps",
+            "stop_background_apps": "Stop Background Apps",
+            "disable_fast_startup": "Disable Fast Startup",
+            "debloat_windows": "Debloat Windows",
+            "chris_titus_utility": "Chris Titus Windows Utility",
+            "oo_shutup10": "O&O ShutUp10 (Privacy Tool)",
+            "storage_sence": "Storage Analyzer (Drive Scanner)",
+            "rebuild_icon_cache": "Rebuild Icon & Thumbnail Cache",
+            "rebuild_font_cache": "Rebuild Font Cache",
+            "export_wifi_passwords": "View / Export Saved Wi-Fi Passwords",
+            "edge_performance": "Edge Performance Adjustments",
+            "disable_gaming_features": "Turn Off All Gaming Features",
+            "enable_gaming_features": "Turn On All Gaming Features",
+            "service_dependency_repair": "Service Dependency Repair",
+            "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
+            "clean_temp": "Clean Temp Files",
+            "disk_cleanup": "Deep Disk Cleanup",
+            "defrag_optimize": "Optimize Drives",
+            "windows_adjustments": "Performance Adjustments",
+            "adjust_virtual_memory": "Optimize Virtual Memory",
+            "component_cleanup": "Component Store Cleanup",
+            "pc_report": "Generate PC Report",
+            "chk_dsk": "Check Disk (CHKDSK)",
+            "sysinternals_autoruns": "Sysinternals Autoruns",
+            "sysinternals_procexp": "Sysinternals Process Explorer",
+            "update_apps": "Update Installed Apps (Winget)",
+            "toggle_safe_mode": "Toggle Safe Mode Boot",
+            "boot_advanced_options": "Boot to Advanced Options / BIOS",
+            "ipconfig_all": "View Network Adapter Details (ipconfig /all)",
+        }
+
+        query = self.smart_search_var.get() if hasattr(self, 'smart_search_var') else ""
+        recs, reason = self._recommend_tasks_for_query(query)
+        self.smart_recommended_task_ids = recs
+        if not recs:
+            self.smart_recommendation_label.config(text="No recommendations yet.")
+            return
+        names = [task_name_map.get(t, t) for t in recs]
+        text = f"Suggested fixes ({reason}):\n- " + "\n- ".join(names)
+        self.smart_recommendation_label.config(text=text)
+
+    def _apply_smart_recommendations(self):
+        """Apply smart-recommended tasks by checking their options."""
+        recs = getattr(self, 'smart_recommended_task_ids', [])
+        if not recs:
+            self._update_smart_search_recommendations()
+            recs = getattr(self, 'smart_recommended_task_ids', [])
+        var_map = self._task_var_map()
+        applied = 0
+        for task_id in recs:
+            var = var_map.get(task_id)
+            if var is not None:
+                var.set(True)
+                applied += 1
+        self.log_message(f"Smart Search selected {applied} recommended task(s).")
+
+    def is_admin(self):
+        try:
+            result = ctypes.windll.shell32.IsUserAnAdmin()
+            return result
+        except Exception as e:
+            return False
+
+    def update_admin_status(self):
+        if self.admin_status:
+            self.admin_label.config(
+                text="  ADMINISTRATOR MODE  ",
+                bg=self.theme['admin_indicator'],
+                fg='#FFFFFF'
+            )
+        else:
+            self.admin_label.config(
+                text="  STANDARD USER  ",
+                bg=self.theme['user_indicator'],
+                fg='#FFFFFF'
+            )
+
+    # â"€â"€ Holographic UI live elements â"€â"€
+
+    def _update_clock(self):
+        """Update the header clock every second."""
+        try:
+            self.clock_label.config(text=time.strftime("%H:%M:%S"))
+        except Exception:
+            pass
+        self._clock_job = self.root.after(1000, self._update_clock)
+
+    def _animation_tick(self):
+        """Single 43ms animation loop replacing three separate ones.
+        Handles resource monitor bars, admin LED pulse, and reboot-note pulse."""
+
+        # --- Resource monitor ---
+        try:
+            import psutil
+            cpu = psutil.cpu_percent(interval=0)
+            ram = psutil.virtual_memory().percent
+
+            # CPU bar
+            c = self._cpu_canvas
+            c.delete("all")
+            w = int(cpu)
+            clr = '#00E890' if cpu < 70 else '#FFB400' if cpu < 90 else '#FF4060'
+            if w > 0:
+                c.create_rectangle(0, 0, w, 6, fill=clr, outline='')
+
+            # RAM bar
+            c = self._ram_canvas
+            c.delete("all")
+            w = int(ram)
+            clr = '#00C8E0' if ram < 70 else '#FFB400' if ram < 90 else '#FF4060'
+            if w > 0:
+                c.create_rectangle(0, 0, w, 6, fill=clr, outline='')
+
+            # GPU bar (cosmetic - steady low value unless GPU monitoring available)
+            c = self._gpu_canvas
+            c.delete("all")
+            c.create_rectangle(0, 0, 18, 6, fill='#7B40E0', outline='')
+        except Exception:
+            pass
+
+        # --- Admin LED pulse ---
+        try:
+            if self.admin_status:
+                bright = (25, 241, 162)
+                dim = (10, 110, 78)
+            else:
+                bright = (204, 151, 51)
+                dim = (120, 84, 20)
+
+            mix = (math.sin(self._admin_pulse_phase) + 1.0) / 2.0
+            r = int(dim[0] + (bright[0] - dim[0]) * mix)
+            g = int(dim[1] + (bright[1] - dim[1]) * mix)
+            b = int(dim[2] + (bright[2] - dim[2]) * mix)
+            self.admin_label.config(bg=f'#{r:02x}{g:02x}{b:02x}')
+            self._admin_pulse_phase += 0.22
+        except Exception:
+            pass
+
+        # --- Reboot-note pulse ---
+        try:
+            bright = (255, 180, 0)
+            dim = (178, 118, 8)
+            mix = (math.sin(self._note_pulse_phase) + 1.0) / 2.0
+            r = int(dim[0] + (bright[0] - dim[0]) * mix)
+            g = int(dim[1] + (bright[1] - dim[1]) * mix)
+            b = int(dim[2] + (bright[2] - dim[2]) * mix)
+            self.note_label.config(bg=f'#{r:02x}{g:02x}{b:02x}', fg='#1A1300')
+            self._note_pulse_phase += 0.18
+        except Exception:
+            pass
+
+        self._animation_job = self.root.after(43, self._animation_tick)
+
+    # Keep thin aliases so any external call sites still work without error
+    def _update_resource_monitor(self):
+        pass
+
+    def _pulse_admin_led(self):
+        pass
+
+    def _pulse_reboot_note(self):
+        pass
+
+    def _on_close(self):
+        """Cancel all recurring after() callbacks before destroying the window."""
+        for job_attr in ('_clock_job', '_animation_job', '_cosmic_refresh_job', '_state_visual_refresh_job'):
+            job = getattr(self, job_attr, None)
+            if job:
+                try:
+                    self.root.after_cancel(job)
+                except Exception:
+                    pass
+        self.root.destroy()
+
+    def _hex_to_rgb_triplet(self, color_hex, fallback=(128, 128, 128)):
+        """Convert #RRGGBB to an RGB tuple."""
+        try:
+            value = str(color_hex or "").strip().lstrip("#")
+            if len(value) == 6:
+                return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+        except Exception:
+            pass
+        return fallback
+
+    def _rgb_to_hex(self, rgb):
+        """Convert an RGB triplet to #RRGGBB."""
+        try:
+            r, g, b = rgb
+            return f"#{int(r):02x}{int(g):02x}{int(b):02x}"
+        except Exception:
+            return "#080b14"
+
+    def _blend_rgb(self, a, b, t):
+        """Linear interpolation between two RGB colors."""
+        t = max(0.0, min(1.0, float(t)))
+        return (
+            int(a[0] + (b[0] - a[0]) * t),
+            int(a[1] + (b[1] - a[1]) * t),
+            int(a[2] + (b[2] - a[2]) * t),
+        )
+
+    def _draw_gradient_on_canvas(self, canvas, tag_name, width, height, top_rgb, bottom_rgb, x=0, y=0):
+        """Draw a smooth vertical gradient on a canvas and keep it behind UI widgets."""
+        try:
+            if canvas is None or not canvas.winfo_exists():
+                return
+            width = int(width)
+            height = int(height)
+            if width < 2 or height < 2:
+                return
+
+            from PIL import Image, ImageDraw, ImageTk
+            img = Image.new("RGB", (width, height))
+            draw = ImageDraw.Draw(img)
+            ar, ag, ab = top_rgb
+            br, bg, bb = bottom_rgb
+            for py in range(height):
+                t = py / max(1, height - 1)
+                r = int(ar + (br - ar) * t)
+                g = int(ag + (bg - ag) * t)
+                b = int(ab + (bb - ab) * t)
+                draw.line([(0, py), (width - 1, py)], fill=(r, g, b))
+            photo = ImageTk.PhotoImage(img)
+            canvas.delete(tag_name)
+            canvas.create_image(x, y, anchor="nw", image=photo, tags=tag_name)
+            canvas.tag_lower(tag_name)
+            # Keep a reference on the canvas object so GC doesn't collect it
+            setattr(canvas, f"_grad_photo_{tag_name}", photo)
+        except Exception:
+            pass
+
+    def _setup_cosmic_background(self):
+        """Render a stable full-window gradient background behind the UI."""
+        if getattr(self, "_cosmic_bg_busy", False):
+            return
+
+        self._cosmic_bg_busy = True
+        try:
+            if getattr(self, "_cosmic_animation_job", None):
+                try:
+                    self.root.after_cancel(self._cosmic_animation_job)
+                except Exception:
+                    pass
+                self._cosmic_animation_job = None
+
+            outer_top = (22, 35, 60)
+            outer_bottom = (6, 11, 22)
+            header_flat = self._hex_to_rgb_triplet(self.theme.get('header_bg', '#0A1428'), fallback=(13, 23, 42))
+            header_top = header_flat
+            header_bottom = header_flat
+            center_top = (28, 45, 76)
+            center_bottom = (9, 16, 30)
+
+            hw = max(2, self.header_bg_canvas.winfo_width()) if hasattr(self, "header_bg_canvas") else 2
+            hh = max(2, self.header_bg_canvas.winfo_height()) if hasattr(self, "header_bg_canvas") else 2
+            sw = max(2, self.scroll_canvas.winfo_width()) if hasattr(self, "scroll_canvas") else 2
+            sh_visible = max(2, self.scroll_canvas.winfo_height()) if hasattr(self, "scroll_canvas") else 2
+            main_h = max(2, self.main_container.winfo_height()) if hasattr(self, "main_container") else sh_visible
+            cw = max(2, self.columns_canvas.winfo_width()) if hasattr(self, "columns_canvas") else 2
+            ch = max(2, self.columns_canvas.winfo_height()) if hasattr(self, "columns_canvas") else 2
+
+            size_key = (hw, hh, sw, sh_visible, main_h, cw, ch)
+            if getattr(self, "_cosmic_bg_size", None) == size_key:
+                return
+            self._cosmic_bg_size = size_key
+
+            base_bg = self._rgb_to_hex(outer_bottom)
+            self.root.configure(bg=base_bg)
+
+            for attr_name in ["scroll_canvas", "main_container", "content_frame", "columns_canvas",
+                              "left_frame", "right_frame", "nebula_canvas"]:
+                widget = getattr(self, attr_name, None)
+                if widget is not None:
+                    try:
+                        widget.configure(bg=base_bg)
+                    except Exception:
+                        pass
+
+            if hasattr(self, "header_bg_canvas"):
+                self._draw_gradient_on_canvas(
+                    self.header_bg_canvas,
+                    "header_gradient_bg",
+                    hw,
+                    hh,
+                    header_top,
+                    header_bottom
+                )
+
+            if hasattr(self, "scroll_canvas"):
+                sh = max(sh_visible, main_h)
+                self._draw_gradient_on_canvas(
+                    self.scroll_canvas,
+                    "scroll_gradient_bg",
+                    sw,
+                    sh,
+                    outer_top,
+                    outer_bottom,
+                    x=0,
+                    y=0
+                )
+
+            if hasattr(self, "columns_canvas"):
+                self._draw_gradient_on_canvas(
+                    self.columns_canvas,
+                    "columns_gradient_bg",
+                    cw,
+                    ch,
+                    center_top,
+                    center_bottom
+                )
+        except Exception:
+            pass
+        finally:
+            self._cosmic_bg_busy = False
+
+    def _apply_cosmic_to_main_container(self):
+        """Legacy hook retained for compatibility."""
+        return
+
+    def _sync_scroll_canvas_background(self):
+        """Legacy hook (kept for compatibility)."""
+        return
+
+    def _run_live_command(self, cmd, task_label, timeout=1800):
+        """Run a command with real-time output streaming to the activity log.
+        
+        Uses subprocess.Popen + readline() so each line of stdout/stderr
+        appears in the activity log immediately instead of waiting for completion.
+        
+        Returns: (return_code, was_timeout)
+        """
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            # Read stderr in a background thread to avoid deadlocks
+            stderr_lines = []
+            def _read_stderr():
+                try:
+                    for line in process.stderr:
+                        stripped = line.strip()
+                        if stripped:
+                            stderr_lines.append(stripped)
+                            self.queue.put(f"PROGRESS:{task_label}:  [stderr] {stripped}")
+                except Exception:
+                    pass
+
+            stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+            stderr_thread.start()
+
+            # Stream stdout line-by-line in real time
+            start_time = time.time()
+            while True:
+                if timeout and (time.time() - start_time) > timeout:
+                    process.kill()
+                    self.queue.put(f"PROGRESS:{task_label}:Process timed out after {timeout}s")
+                    return -1, True
+
+                line = process.stdout.readline()
+                if line == '' and process.poll() is not None:
+                    break
+                if line:
+                    stripped = line.strip()
+                    if stripped:
+                        self.queue.put(f"PROGRESS:{task_label}:  {stripped}")
+
+            # Wait for stderr thread to finish
+            stderr_thread.join(timeout=5)
+
+            return process.returncode, False
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{task_label}:Error running command: {str(e)}")
+            return -1, False
+
+    def log_message(self, message, task_name=None):
+        try:
+            timestamp = time.strftime("[%H:%M:%S]")
+            safe_message = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', str(message))
+
+            # Setup tags if not present
+            if not "status_ok" in self.log_area.tag_names():
+                self.log_area.tag_configure("status_ok", foreground=self.theme['log_text_fg'])
+                self.log_area.tag_configure("status_err", foreground=self.theme['admin_error_fg'])
+                self.log_area.tag_configure("timestamp", foreground=self.theme['primary'], font=('Exo 2', 9, 'bold'))
+
+            self.log_area.insert(tk.END, f"{timestamp} ", "timestamp")
+
+            if task_name:
+                self.log_area.insert(tk.END, f"[{task_name}] ")
+
+            tag = ""
+            msg_lower = safe_message.lower()
+            if any(ok in msg_lower for ok in ["success", "done", "complete", "ok"]):
+                tag = "status_ok"
+            elif any(err in msg_lower for err in ["error", "fail", "denied", "required"]):
+                tag = "status_err"
+
+            self.log_area.insert(tk.END, f"{safe_message}\n", tag)
+            self.log_area.see(tk.END)
+        except Exception:
+            pass
+
+    def show_progress(self, show=True):
+        """Show or hide the progress section"""
+        if show and not self.progress_active:
+            self.progress_section.pack(fill=tk.X, pady=(0, 10))
+            self.progress_bar.start(10)
+            self.progress_active = True
+        elif not show and self.progress_active:
+            self.progress_bar.stop()
+            self.progress_section.pack_forget()
+            self.progress_active = False
+
+    def update_progress_info(self, task_name=None, info=None):
+        """Update progress information"""
+        if task_name:
+            self.current_task_label.config(text=f"Current Task: {task_name}")
+        if info:
+            self.progress_percent_label.config(text=info)
+
+    def _sort_tasks_efficiently(self, tasks):
+        """Sort selected tasks by estimated runtime (shortest first, longest last)."""
+        # Lower values run first; large/long-running operations run at the end.
+        runtime_weight = {
+            # Quick diagnostics / lightweight checks
+            "create_restore_point_guardrail": 10,
+            "ping_test": 15,
+            "ipconfig_all": 15,
+            "event_log_viewer": 20,
+            "pc_report": 25,
+            "network_diagnostic_bundle": 30,
+            "run_storage_sence": 35,
+            "storage_sence": 35,
+            "autopilot_csv": 40,
+            "export_wifi_passwords": 40,
+            "clear_print_spooler": 40,
+            "reset_hosts": 45,
+            "network_adapter_reset": 45,
+            "flush_dns": 50,
+            "change_dns": 55,
+            "stop_background_apps": 60,
+            "disable_startup_apps": 65,
+            "disable_fast_startup": 70,
+            "edge_performance": 75,
+            "windows_adjustments": 80,
+            "disable_gaming_features": 85,
+            "enable_gaming_features": 86,
+            "adjust_virtual_memory": 88,
+            "rebuild_icon_cache": 90,
+            "rebuild_font_cache": 95,
+            "reset_search_index": 100,
+            "service_dependency_repair": 110,
+            "component_cleanup": 120,
+            "defrag_optimize": 140,
+            "clear_browser_cache": 140,
+            "clean_temp": 150,
+            "disk_cleanup": 170,
+            "update_apps": 180,
+            # Security/remediation runs
+            "defender_scan": 210,
+            "msrt_scan": 230,
+            "smart_malware_remediation": 250,
+            # Network heavy remediations
+            "reset_network": 260,
+            "deep_network_remediation": 280,
+            # Driver/firmware/update heavy runs
+            "driver_rollback_center": 300,
+            "reset_win_update": 305,
+            "install_system_drivers": 320,
+            "device_firmware": 340,
+            "windows_update_forensic": 360,
+            "windows_updates": 390,
+            # Potentially very long operations at the end
+            "repair_system": 420,
+            "chk_dsk": 450,
+            # Utility launchers / external tools
+            "chris_titus_utility": 500,
+            "debloat_windows": 520,
+            "oo_shutup10": 530,
+            "minidump_analyzer": 540,
+            "sysinternals_autoruns": 550,
+            "sysinternals_procexp": 560,
+            "bsod_triage": 580,
+            "toggle_safe_mode": 600,
+            "boot_advanced_options": 650,
+        }
+
+        ordered = list(tasks)
+
+        # Keep explicit restore-point task first if user selected it.
+        if "create_restore_point_guardrail" in ordered:
+            ordered = ["create_restore_point_guardrail"] + [t for t in ordered if t != "create_restore_point_guardrail"]
+
+        # Stable sort by configured runtime weight.
+        ordered = sorted(ordered, key=lambda t: runtime_weight.get(t, 300))
+
+        # If both are selected, run update forensic fixer before regular update run.
+        if "windows_update_forensic" in ordered and "windows_updates" in ordered:
+            ordered.remove("windows_update_forensic")
+            idx = ordered.index("windows_updates")
+            ordered.insert(idx, "windows_update_forensic")
+
+        # Keep known dependency pairs in a safe order.
+        dependency_pairs = [
+            ("reset_win_update", "windows_update_forensic"),
+            ("reset_win_update", "windows_updates"),
+            ("service_dependency_repair", "windows_updates"),
+            ("driver_rollback_center", "install_system_drivers"),
+            ("flush_dns", "change_dns"),
+            ("change_dns", "ping_test"),
+            ("reset_network", "deep_network_remediation"),
+        ]
+        for before_task, after_task in dependency_pairs:
+            if before_task in ordered and after_task in ordered:
+                ordered.remove(before_task)
+                after_index = ordered.index(after_task)
+                ordered.insert(after_index, before_task)
+
+        return ordered
+
+    def run_selected_tasks(self):
+        # Disable button during operation
+        self.run_button.config(state=tk.DISABLED)
+
+        # Get selected tasks
+        tasks = []
+        if self.clean_temp.get():
+            tasks.append("clean_temp")
+        if self.disk_cleanup.get():
+            tasks.append("disk_cleanup")
+        if self.disable_fast_startup.get():
+            tasks.append("disable_fast_startup")
+        if self.update_apps.get():
+            tasks.append("update_apps")
+        if self.windows_updates.get():
+            tasks.append("windows_updates")
+        if self.device_firmware.get():
+            tasks.append("device_firmware")
+        if self.repair_system.get():
+            tasks.append("repair_system")
+        if self.chk_dsk.get():
+            tasks.append("chk_dsk")
+        if self.windows_adjustments.get():
+            tasks.append("windows_adjustments")
+        if self.flush_dns.get():
+            tasks.append("flush_dns")
+        if self.ipconfig_all.get():
+            tasks.append("ipconfig_all")
+        if self.change_dns.get():
+            tasks.append("change_dns")
+        if self.autopilot_csv.get():
+            tasks.append("autopilot_csv")
+        if self.pc_report.get():  # New PC Report task
+            tasks.append("pc_report")
+        if self.chris_titus_utility.get():  # New Chris Titus Utility task
+            tasks.append("chris_titus_utility")
+        if self.storage_sence.get():  # New StorageSence task
+            tasks.append("storage_sence")
+        if self.stop_background_apps_var.get():
+            tasks.append("stop_background_apps")
+        if self.disable_startup_apps_var.get():
+            tasks.append("disable_startup_apps")
+        if self.oo_shutup10.get():
+            tasks.append("oo_shutup10")
+        if self.edge_performance.get():
+            tasks.append("edge_performance")
+        if self.disable_gaming_features.get():
+            tasks.append("disable_gaming_features")
+        if self.enable_gaming_features.get():
+            tasks.append("enable_gaming_features")
+        if self.adjust_virtual_memory.get():
+            tasks.append("adjust_virtual_memory")
+        if self.install_system_drivers.get():
+            tasks.append("install_system_drivers")
+        if self.debloat_windows.get():
+            tasks.append("debloat_windows")
+        if self.reset_win_update.get():
+            tasks.append("reset_win_update")
+        if self.reset_network.get():
+            tasks.append("reset_network")
+        if self.rebuild_icon_cache.get():
+            tasks.append("rebuild_icon_cache")
+        if self.component_cleanup.get():
+            tasks.append("component_cleanup")
+        if self.clear_print_spooler.get():
+            tasks.append("clear_print_spooler")
+        if self.toggle_safe_mode.get():
+            tasks.append("toggle_safe_mode")
+        if self.boot_advanced_options.get():
+            tasks.append("boot_advanced_options")
+        if self.export_wifi_passwords.get():
+            tasks.append("export_wifi_passwords")
+        if self.reset_hosts.get():
+            tasks.append("reset_hosts")
+        if self.rebuild_font_cache.get():
+            tasks.append("rebuild_font_cache")
+        if self.reset_search_index.get():
+            tasks.append("reset_search_index")
+        if self.network_adapter_reset.get():
+            tasks.append("network_adapter_reset")
+        if self.ping_test.get():
+            tasks.append("ping_test")
+        if self.defrag_optimize.get():
+            tasks.append("defrag_optimize")
+        if self.defender_scan.get():
+            tasks.append("defender_scan")
+        if self.clear_browser_cache.get():
+            tasks.append("clear_browser_cache")
+        if self.event_log_viewer.get():
+            tasks.append("event_log_viewer")
+        if self.msrt_scan.get():
+            tasks.append("msrt_scan")
+        if self.minidump_analyzer.get():
+            tasks.append("minidump_analyzer")
+        if self.deep_network_remediation.get():
+            tasks.append("deep_network_remediation")
+        if self.sysinternals_autoruns.get():
+            tasks.append("sysinternals_autoruns")
+        if self.sysinternals_procexp.get():
+            tasks.append("sysinternals_procexp")
+        if self.bsod_triage.get():
+            tasks.append("bsod_triage")
+        if self.driver_rollback_center.get():
+            tasks.append("driver_rollback_center")
+        if self.windows_update_forensic.get():
+            tasks.append("windows_update_forensic")
+        if self.smart_malware_remediation.get():
+            tasks.append("smart_malware_remediation")
+        if self.network_diagnostic_bundle.get():
+            tasks.append("network_diagnostic_bundle")
+        if self.service_dependency_repair.get():
+            tasks.append("service_dependency_repair")
+        if self.create_restore_point_guardrail.get():
+            tasks.append("create_restore_point_guardrail")
+        if self.activate_windows.get():
+            tasks.append("activate_windows")
+
+        # Resolve contradictory gaming toggles if both are selected.
+        if "disable_gaming_features" in tasks and "enable_gaming_features" in tasks:
+            tasks.remove("disable_gaming_features")
+            self.log_message("Both gaming toggles selected. Keeping 'Turn On All Gaming Features'.")
+
+        # If activate_windows is selected, prompt for product key NOW (on UI thread)
+        self._windows_product_key = None
+        if "activate_windows" in tasks:
+            self._windows_product_key = self._prompt_product_key()
+            if not self._windows_product_key:
+                tasks.remove("activate_windows")
+
+        if not tasks:
+            self.log_message("No tasks selected!")
+            self.run_button.config(state=tk.NORMAL)
+            return
+
+        tasks = self._sort_tasks_efficiently(tasks)
+        self.log_message("Execution order optimized for speed (longest tasks run last).")
+
+        # Show progress bar
+        self.show_progress(True)
+
+        # Start worker thread
+        self.log_message("Starting selected tasks...")
+        threading.Thread(target=self.execute_tasks, args=(tasks,), daemon=True).start()
+
+    def reset_all_checkboxes(self):
+        """Reset all task checkboxes to unchecked state after tasks complete"""
+        # Core System Tasks
+        self.clean_temp.set(False)
+        self.disk_cleanup.set(False)
+        self.disable_fast_startup.set(False)
+        self.repair_system.set(False)
+        self.chk_dsk.set(False)
+        self.windows_updates.set(False)
+
+        # App Settings
+        self.stop_background_apps_var.set(False)
+        self.disable_startup_apps_var.set(False)
+        self.update_apps.set(False)
+
+        # Additional Tasks
+        self.windows_adjustments.set(False)
+        self.flush_dns.set(False)
+        self.ipconfig_all.set(False)
+        self.change_dns.set(False)
+        self.autopilot_csv.set(False)
+        self.pc_report.set(False)
+        self.chris_titus_utility.set(False)
+        self.storage_sence.set(False)
+        self.device_firmware.set(False)
+        self.oo_shutup10.set(False)
+        self.edge_performance.set(False)
+        self.disable_gaming_features.set(False)
+        self.enable_gaming_features.set(False)
+        self.adjust_virtual_memory.set(False)
+        self.install_system_drivers.set(False)
+        self.debloat_windows.set(False)
+        self.reset_win_update.set(False)
+        self.reset_network.set(False)
+        self.rebuild_icon_cache.set(False)
+        self.component_cleanup.set(False)
+        self.clear_print_spooler.set(False)
+        self.toggle_safe_mode.set(False)
+        self.boot_advanced_options.set(False)
+        self.export_wifi_passwords.set(False)
+        self.reset_hosts.set(False)
+        self.rebuild_font_cache.set(False)
+        self.reset_search_index.set(False)
+        self.network_adapter_reset.set(False)
+        self.ping_test.set(False)
+        self.defrag_optimize.set(False)
+        self.defender_scan.set(False)
+        self.clear_browser_cache.set(False)
+        self.event_log_viewer.set(False)
+        self.msrt_scan.set(False)
+        self.minidump_analyzer.set(False)
+        self.deep_network_remediation.set(False)
+        self.sysinternals_autoruns.set(False)
+        self.sysinternals_procexp.set(False)
+        self.bsod_triage.set(False)
+        self.driver_rollback_center.set(False)
+        self.windows_update_forensic.set(False)
+        self.smart_malware_remediation.set(False)
+        self.network_diagnostic_bundle.set(False)
+        self.service_dependency_repair.set(False)
+        self.create_restore_point_guardrail.set(False)
+
+        # Directly apply deselected styling to every row without relying on
+        # variable reads or cache — guarantees a clean visual reset.
+        glass   = self.theme.get('glass_tint', '#162742')
+        task_fg = self.theme.get('task_fg', '#8899AA')
+        if hasattr(self, '_task_led_rows'):
+            for checkbutton, indicator_label, base_color, row_frame in self._task_led_rows:
+                try:
+                    row_frame.configure(bg=glass, highlightthickness=0, bd=0, relief=tk.FLAT)
+                    checkbutton.configure(
+                        bg=glass, selectcolor=glass, activebackground=glass,
+                        fg=task_fg, highlightthickness=0
+                    )
+                    if indicator_label is not None:
+                        indicator_label.configure(
+                            bg=glass, fg=base_color,
+                            text='●', font=('Segoe UI', 10, 'bold')
+                        )
+                except Exception:
+                    continue
+        self._task_led_state_cache = {}
+        self._update_reboot_notice()
+        self.root.update_idletasks()
+
+        self.log_message("All task checkboxes have been reset.")
+
+    def execute_tasks(self, tasks):
+
+        if not self.admin_status:
+            self.queue.put("ERROR: Administrator privileges required!")
+            self.queue.put("Please restart the application as administrator.")
+            self.queue.put("TASKS_FAILED")
+            return
+
+        for task in tasks:
+            try:
+                # Map task names to display names
+                task_display_names = {
+                    "clean_temp": "Clean Temp Files",
+                    "disk_cleanup": "Disk Cleanup",
+                    "disable_fast_startup": "Disable Fast Startup",
+                    "update_apps": "Update Apps",
+                    "windows_updates": "Check & Install Windows Updates",
+                    "device_firmware": "Device Firmware Updates",
+                    "repair_system": "Repair System",
+                    "chk_dsk": "Check Disk",
+                    "windows_adjustments": "Windows Adjustments",
+                    "flush_dns": "Flush DNS and Renew IP",
+                    "ipconfig_all": "Display IP Configuration",
+                    "change_dns": "Change DNS to 1.1.1.1 and 8.8.8.8",
+                    "autopilot_csv": "AutoPilot CSV Creation",
+                    "pc_report": "PC Report",
+                    "chris_titus_utility": "Chris Titus Windows Utility",
+                    "storage_sence": "StorageSence (Advanced Drive Scanner)",
+                    "stop_background_apps": "Stop Background Apps",
+                    "disable_startup_apps": "Disable Startup Apps",
+                    "oo_shutup10": "O&O ShutUp10 Privacy Tool",
+                    "edge_performance": "Edge Performance Adjustments",
+                    "disable_gaming_features": "Turn Off All Gaming Features",
+                    "enable_gaming_features": "Turn On All Gaming Features",
+                    "adjust_virtual_memory": "Optimize Virtual Memory",
+                    "install_system_drivers": "Install System Drivers",
+                    "debloat_windows": "Debloat Windows",
+                    "reset_win_update": "Reset Windows Update",
+                    "reset_network": "Reset Network Stack",
+                    "rebuild_icon_cache": "Rebuild Icon Cache",
+                    "component_cleanup": "Component Store Cleanup",
+                    "rebuild_font_cache": "Rebuild Font Cache",
+                    "reset_search_index": "Reset Search Index",
+                    "network_adapter_reset": "Network Adapter Reset",
+                    "ping_test": "Ping Test",
+                    "defrag_optimize": "Optimize Drives",
+                    "defender_scan": "Defender Full Scan",
+                    "clear_browser_cache": "Clear Browser Cache",
+                    "event_log_viewer": "Event Log Viewer",
+                    "msrt_scan": "MSRT Malware Scan",
+                    "minidump_analyzer": "MiniDump Analyzer (BlueScreenView)",
+                    "deep_network_remediation": "Deep Network Stack Remediation",
+                    "sysinternals_autoruns": "Sysinternals Autoruns",
+                    "sysinternals_procexp": "Sysinternals Process Explorer",
+                    "bsod_triage": "One-Click BSOD Triage",
+                    "driver_rollback_center": "Driver Rollback Center",
+                    "windows_update_forensic": "Windows Update Forensic Fixer",
+                    "smart_malware_remediation": "Smart Malware Remediation Mode",
+                    "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
+                    "service_dependency_repair": "Service Dependency Repair",
+                    "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
+                    "activate_windows": "Activate Windows/Change Product Key"
+                }
+
+                display_name = task_display_names.get(task, task)
+                self.queue.put(f"TASK_START:{task}:{display_name}")
+
+                # Guardrail: try to create a restore point before risky actions.
+                risky_tasks = {
+                    "windows_updates", "device_firmware", "repair_system", "chk_dsk", "windows_adjustments",
+                    "change_dns", "reset_win_update", "reset_network", "component_cleanup", "toggle_safe_mode",
+                    "boot_advanced_options", "rebuild_font_cache", "reset_search_index", "defrag_optimize",
+                    "defender_scan", "msrt_scan", "deep_network_remediation", "install_system_drivers",
+                    "debloat_windows", "driver_rollback_center", "windows_update_forensic",
+                    "smart_malware_remediation", "service_dependency_repair"
+                }
+                if task in risky_tasks:
+                    self._create_restore_point_guardrail(display_name)
+
+                if task == "clean_temp":
+                    self.clean_temp_files()
+                elif task == "disk_cleanup":
+                    self.run_disk_cleanup()
+                elif task == "disable_fast_startup":
+                    self.perform_disable_fast_startup()
+                elif task == "update_apps":
+                    self.update_installed_apps()
+                elif task == "windows_updates":
+                    self.check_and_install_windows_updates()
+                elif task == "device_firmware":
+                    self.check_and_install_device_firmware()
+                elif task == "repair_system":
+                    self.repair_system_files()
+                elif task == "chk_dsk":
+                    self.run_chk_dsk()
+                elif task == "windows_adjustments":
+                    self.perform_windows_adjustments()
+                elif task == "flush_dns":
+                    self.flush_dns_and_renew_ip()
+                elif task == "ipconfig_all":
+                    self.display_ip_config()
+                elif task == "change_dns":
+                    self.change_dns_servers()
+                elif task == "autopilot_csv":
+                    self.create_autopilot_csv()
+                elif task == "pc_report":  # New PC Report task
+                    self.generate_pc_report()
+                elif task == "chris_titus_utility":  # New Chris Titus Utility task
+                    self.run_chris_titus_utility()
+                elif task == "storage_sence":  # New StorageSence task
+                    self.run_storage_sence()
+                elif task == "stop_background_apps":
+                    self.stop_background_apps()
+                elif task == "disable_startup_apps":
+                    self.disable_startup_apps()
+                elif task == "oo_shutup10":
+                    self.run_oo_shutup10()
+                elif task == "edge_performance":
+                    self.apply_edge_performance_adjustments()
+                elif task == "disable_gaming_features":
+                    self.disable_all_gaming_features()
+                elif task == "enable_gaming_features":
+                    self.enable_all_gaming_features()
+                elif task == "adjust_virtual_memory":
+                    self.optimize_virtual_memory()
+                elif task == "install_system_drivers":
+                    self.install_system_drivers_info()
+                elif task == "debloat_windows":
+                    self.run_win11_debloat()
+                elif task == "reset_win_update":
+                    self.reset_windows_update()
+                elif task == "reset_network":
+                    self.reset_network_stack()
+                elif task == "rebuild_icon_cache":
+                    self.rebuild_icon_and_thumb_cache()
+                elif task == "component_cleanup":
+                    self.run_component_store_cleanup()
+                elif task == "clear_print_spooler":
+                    self.run_clear_print_spooler()
+                elif task == "toggle_safe_mode":
+                    self.run_toggle_safe_mode()
+                elif task == "boot_advanced_options":
+                    self.run_boot_advanced_options()
+                elif task == "export_wifi_passwords":
+                    self.run_export_wifi_passwords()
+                elif task == "reset_hosts":
+                    self.run_reset_hosts()
+                elif task == "rebuild_font_cache":
+                    self.run_rebuild_font_cache()
+                elif task == "reset_search_index":
+                    self.run_reset_search_index()
+                elif task == "network_adapter_reset":
+                    self.run_network_adapter_reset()
+                elif task == "ping_test":
+                    self.run_ping_test()
+                elif task == "defrag_optimize":
+                    self.run_defrag_optimize()
+                elif task == "defender_scan":
+                    self.run_defender_scan()
+                elif task == "clear_browser_cache":
+                    self.run_clear_browser_cache()
+                elif task == "event_log_viewer":
+                    self.run_event_log_viewer()
+                elif task == "msrt_scan":
+                    self.run_msrt_scan()
+                elif task == "minidump_analyzer":
+                    self.run_minidump_analyzer()
+                elif task == "deep_network_remediation":
+                    self.run_deep_network_remediation()
+                elif task == "sysinternals_autoruns":
+                    self.run_sysinternals_autoruns()
+                elif task == "sysinternals_procexp":
+                    self.run_sysinternals_procexp()
+                elif task == "bsod_triage":
+                    self.run_bsod_triage()
+                elif task == "driver_rollback_center":
+                    self.run_driver_rollback_center()
+                elif task == "windows_update_forensic":
+                    self.run_windows_update_forensic_fixer()
+                elif task == "smart_malware_remediation":
+                    self.run_smart_malware_remediation()
+                elif task == "network_diagnostic_bundle":
+                    self.run_network_diagnostic_bundle()
+                elif task == "service_dependency_repair":
+                    self.run_service_dependency_repair()
+                elif task == "create_restore_point_guardrail":
+                    self.run_create_restore_point_guardrail()
+                elif task == "activate_windows":
+                    self.run_activate_windows()
+
+                self.queue.put(f"TASK_END:{task}")
+            except Exception as e:
+                self.queue.put(f"Error in task {task}: {str(e)}")
+
+        self.queue.put("All selected tasks completed!")
+        self.queue.put("TASKS_COMPLETE")
+
+    def process_queue(self):
+        task_display_names = {
+            "clean_temp": "Clean Temp Files",
+            "disk_cleanup": "Disk Cleanup",
+            "disable_fast_startup": "Disable Fast Startup",
+            "update_apps": "Update Apps",
+            "windows_updates": "Check & Install Windows Updates",
+            "device_firmware": "Device Firmware Updates",
+            "repair_system": "Repair System",
+            "chk_dsk": "Check Disk",
+            "windows_adjustments": "Windows Adjustments",
+            "flush_dns": "Flush DNS and Renew IP",
+            "ipconfig_all": "Display IP Configuration",
+            "change_dns": "Change DNS to 1.1.1.1 and 8.8.8.8",
+            "autopilot_csv": "AutoPilot CSV Creation",
+            "pc_report": "PC Report",
+            "chris_titus_utility": "Chris Titus Windows Utility",
+            "storage_sence": "StorageSence",
+            "stop_background_apps": "Stop Background Apps",
+            "disable_startup_apps": "Disable Startup Apps",
+            "install_system_drivers": "Install System Drivers",
+            "debloat_windows": "Debloat Windows",
+            "app_installer": "App Installer",
+            "reset_win_update": "Reset Windows Update",
+            "reset_network": "Reset Network Stack",
+            "rebuild_icon_cache": "Rebuild Icon Cache",
+            "component_cleanup": "Component Store Cleanup",
+            "rebuild_font_cache": "Rebuild Font Cache",
+            "reset_search_index": "Reset Search Index",
+            "network_adapter_reset": "Network Adapter Reset",
+            "ping_test": "Ping Test",
+            "defrag_optimize": "Optimize Drives",
+            "defender_scan": "Defender Full Scan",
+            "clear_browser_cache": "Clear Browser Cache",
+            "event_log_viewer": "Event Log Viewer",
+            "msrt_scan": "MSRT Malware Scan",
+            "bsod_triage": "One-Click BSOD Triage",
+            "driver_rollback_center": "Driver Rollback Center",
+            "windows_update_forensic": "Windows Update Forensic Fixer",
+            "smart_malware_remediation": "Smart Malware Remediation Mode",
+            "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
+            "service_dependency_repair": "Service Dependency Repair",
+            "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
+            "activate_windows": "Activate Windows/Change Product Key"
+        }
+
+        try:
+            while True:
+                msg = self.queue.get_nowait()
+
+                # Handle task start
+                if msg.startswith("TASK_START:"):
+                    parts = msg.split(":", 2)
+                    if len(parts) >= 3:
+                        task_id = parts[1]
+                        display_name = task_display_names.get(task_id, parts[2])
+                        self.log_message(f"Starting task: {display_name}", display_name)
+                        self.update_progress_info(display_name, "0%")
+
+                # Handle task progress
+                elif msg.startswith("PROGRESS:"):
+                    parts = msg.split(":", 2)
+                    if len(parts) >= 3:
+                        task_id = parts[1]
+                        progress_info = parts[2]
+                        display_name = task_display_names.get(task_id, task_id)
+
+                        # Extract progress percentage if available
+                        progress_match = re.search(r'(\d+)%', progress_info)
+                        if progress_match:
+                            progress = progress_match.group(1)
+                            self.update_progress_info(display_name, f"{progress}%")
+                        else:
+                            fraction_match = re.search(r'(\d+)/(\d+)', progress_info)
+                            if fraction_match:
+                                current = int(fraction_match.group(1))
+                                total = int(fraction_match.group(2))
+                                if total > 0:
+                                    progress = int((current / total) * 100)
+                                    self.update_progress_info(display_name, f"{progress}%")
+
+                        self.log_message(progress_info, display_name)
+
+                # Handle task end
+                elif msg.startswith("TASK_END:"):
+                    task_id = msg.split(":", 1)[1]
+                    display_name = task_display_names.get(task_id, task_id)
+                    self.log_message(f"Task completed: {display_name}", display_name)
+                    self.update_progress_info(display_name, "100%")
+
+                # Handle regular messages
+                else:
+                    self.log_message(msg)
+
+                # Handle task completion
+                if msg == "TASKS_COMPLETE":
+                    self.run_button.config(state=tk.NORMAL)
+                    self.show_progress(False)
+                    self.update_progress_info("None", "")
+                    self.log_message("Tasks finished successfully!")
+                    self.reset_all_checkboxes()  # Auto-uncheck all checkboxes
+                elif msg == "TASKS_FAILED":
+                    self.run_button.config(state=tk.NORMAL)
+                    self.show_progress(False)
+                    self.update_progress_info("None", "")
+        except queue.Empty:
+            self.root.after(100, self.process_queue)
+
+    # ==================== CHRIS TITUS UTILITY METHODS ====================
+    def run_chris_titus_utility(self):
+        """Run Chris Titus Windows Utility using PowerShell script"""
+        self.queue.put("PROGRESS:Chris Titus Utility:Starting Chris Titus Windows Utility...")
+        self.queue.put("PROGRESS:Chris Titus Utility:This will download and run the utility from christitus.com")
+
+        try:
+            # PowerShell command to run the Chris Titus Windows Utility
+            ps_command = "irm christitus.com/win | iex"
+
+            self.queue.put("PROGRESS:Chris Titus Utility:Executing PowerShell command...")
+            self.queue.put(f"PROGRESS:Chris Titus Utility:Command: {ps_command}")
+
+            # Run PowerShell command with live output
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-Command', ps_command], 'Chris Titus Utility', timeout=600)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Chris Titus Utility:Operation timed out after 10 minutes")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Chris Titus Utility:Chris Titus Windows Utility completed successfully")
+            else:
+                self.queue.put(f"PROGRESS:Chris Titus Utility:Completed with return code: {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Chris Titus Utility:Error running Chris Titus Utility: {str(e)}")
+
+    # ==================== STORAGESENCE METHODS ====================
+    def run_storage_sence(self):
+        """Run StorageSence Advanced Drive Scanner - Opens the built-in scanner UI"""
+        self.queue.put("PROGRESS:StorageSence:Launching built-in StorageSense...")
+        try:
+            # Open the merged StorageSenseApp as a Toplevel window
+            # This runs in the same process - no need to search for external files
+            def open_scanner():
+                try:
+                    StorageSenseApp(self.root, theme=self.theme)
+                    self.queue.put("PROGRESS:StorageSence:StorageSense window opened successfully.")
+                except Exception as e:
+                    self.queue.put(f"PROGRESS:StorageSence:Error opening window: {str(e)}")
+
+            # Schedule to run on the main thread (Tkinter requirement)
+            self.root.after(100, open_scanner)
+            self.queue.put("PROGRESS:StorageSence:StorageSense launched successfully.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:StorageSence:Error: {str(e)}")
+
+    # ==================== PC REPORT METHODS ====================
+    def generate_pc_report(self):
+        """Generate a comprehensive PC report using the new PCReporter class"""
+        self.queue.put("PROGRESS:PC Report:Starting comprehensive PC report generation...")
+        self.queue.put("PROGRESS:PC Report:This may take several minutes. Please be patient.")
+
+        try:
+            # Create a PCReporter instance
+            reporter = PCReporter()
+
+            # Collect all system information
+            self.queue.put("PROGRESS:PC Report:Collecting system information...")
+            reporter.collect_system_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting hardware information...")
+            reporter.collect_hardware_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting software information...")
+            reporter.collect_software_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting network information...")
+            reporter.collect_network_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting security information...")
+            reporter.collect_security_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting user information...")
+            reporter.collect_user_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting environment variables...")
+            reporter.collect_environment_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting running processes...")
+            reporter.collect_process_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting system services...")
+            reporter.collect_service_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting hardware devices...")
+            reporter.collect_device_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting performance metrics...")
+            reporter.collect_performance_metrics()
+
+            self.queue.put("PROGRESS:PC Report:Checking for security vulnerabilities...")
+            reporter.collect_vulnerability_info()
+
+            self.queue.put("PROGRESS:PC Report:Collecting startup items information...")
+            reporter.collect_startup_info()
+
+            # Generate HTML report
+            self.queue.put("PROGRESS:PC Report:Generating HTML report...")
+            report_file = reporter.generate_html_report()
+
+            # Get the full path to the report
+            report_path = os.path.abspath(report_file)
+
+            self.queue.put(f"PROGRESS:PC Report:Report saved to: {report_path}")
+
+            # Open the report in the default browser
+            self.queue.put("PROGRESS:PC Report:Opening report in default browser...")
+            webbrowser.open(f"file:///{report_path}")
+
+            self.queue.put("PROGRESS:PC Report:PC Report generation completed successfully!")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:PC Report:Error generating PC Report: {str(e)}")
+            import traceback
+            self.queue.put(f"PROGRESS:PC Report:Traceback: {traceback.format_exc()}")
+
+    # ==================== ADVANCED REPAIR TOOLS ====================
+
+    def reset_windows_update(self):
+        """Reset Windows Update components to fix stuck or failing updates"""
+        self.queue.put("PROGRESS:Reset Windows Update:Starting Windows Update components reset...")
+        self.queue.put("PROGRESS:Reset Windows Update:This will stop update services, clear caches, and restart services.")
+
+        try:
+            # Step 1: Stop services
+            services = ['bits', 'wuauserv', 'appidsvc', 'cryptsvc']
+            for svc in services:
+                self.queue.put(f"PROGRESS:Reset Windows Update:Stopping service: {svc}...")
+                rc, _ = self._run_live_command(['net', 'stop', svc], 'Reset Windows Update', timeout=30)
+                if rc == 0:
+                    self.queue.put(f"PROGRESS:Reset Windows Update:Service {svc} stopped")
+                else:
+                    self.queue.put(f"PROGRESS:Reset Windows Update:Service {svc} may already be stopped (rc={rc})")
+
+            # Step 2: Rename SoftwareDistribution and catroot2 folders
+            self.queue.put("PROGRESS:Reset Windows Update:Renaming SoftwareDistribution folder...")
+            timestamp = time.strftime("%Y%m%d%H%M%S")
+            sd_path = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'SoftwareDistribution')
+            catroot_path = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'catroot2')
+
+            for folder, label in [(sd_path, 'SoftwareDistribution'), (catroot_path, 'catroot2')]:
+                self.queue.put(f"PROGRESS:Reset Windows Update:Renaming {label}...")
+                new_name = f"{folder}.bak.{timestamp}"
+                try:
+                    if os.path.exists(folder):
+                        os.rename(folder, new_name)
+                        self.queue.put(f"PROGRESS:Reset Windows Update:Renamed {label} to {os.path.basename(new_name)}")
+                    else:
+                        self.queue.put(f"PROGRESS:Reset Windows Update:{label} folder not found (already reset?)")
+                except PermissionError:
+                    self.queue.put(f"PROGRESS:Reset Windows Update:Could not rename {label} -- may be locked by a service")
+                except Exception as e:
+                    self.queue.put(f"PROGRESS:Reset Windows Update:Error renaming {label}: {str(e)}")
+
+            # Step 3: Restart services
+            for svc in services:
+                self.queue.put(f"PROGRESS:Reset Windows Update:Starting service: {svc}...")
+                rc, _ = self._run_live_command(['net', 'start', svc], 'Reset Windows Update', timeout=30)
+                if rc == 0:
+                    self.queue.put(f"PROGRESS:Reset Windows Update:Service {svc} started")
+                else:
+                    self.queue.put(f"PROGRESS:Reset Windows Update:Could not start {svc} (rc={rc})")
+
+            self.queue.put("PROGRESS:Reset Windows Update:Windows Update components have been reset!")
+            self.queue.put("PROGRESS:Reset Windows Update:Try checking for updates again now.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Reset Windows Update:Error resetting Windows Update: {str(e)}")
+
+    def reset_network_stack(self):
+        """Reset Winsock catalog and TCP/IP stack to fix deep network issues"""
+        self.queue.put("PROGRESS:Reset Network Stack:Starting network stack reset...")
+        self.queue.put("PROGRESS:Reset Network Stack:This will reset Winsock and TCP/IP. A reboot is required after.")
+
+        try:
+            # Step 1: Reset Winsock
+            self.queue.put("PROGRESS:Reset Network Stack:Step 1: Resetting Winsock catalog...")
+            rc, timed_out = self._run_live_command(
+                ['netsh', 'winsock', 'reset'], 'Reset Network Stack', timeout=60)
+            if timed_out:
+                self.queue.put("PROGRESS:Reset Network Stack:Winsock reset timed out")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Reset Network Stack:Winsock catalog reset successfully")
+            else:
+                self.queue.put(f"PROGRESS:Reset Network Stack:Winsock reset completed with code {rc}")
+
+            # Step 2: Reset TCP/IP stack
+            self.queue.put("PROGRESS:Reset Network Stack:Step 2: Resetting TCP/IP stack...")
+            rc, timed_out = self._run_live_command(
+                ['netsh', 'int', 'ip', 'reset'], 'Reset Network Stack', timeout=60)
+            if timed_out:
+                self.queue.put("PROGRESS:Reset Network Stack:TCP/IP reset timed out")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Reset Network Stack:TCP/IP stack reset successfully")
+            else:
+                self.queue.put(f"PROGRESS:Reset Network Stack:TCP/IP reset completed with code {rc}")
+
+            # Step 3: Reset IPv6
+            self.queue.put("PROGRESS:Reset Network Stack:Step 3: Resetting IPv6 stack...")
+            rc, _ = self._run_live_command(
+                ['netsh', 'int', 'ipv6', 'reset'], 'Reset Network Stack', timeout=60)
+
+            # Step 4: Flush DNS as a bonus
+            self.queue.put("PROGRESS:Reset Network Stack:Step 4: Flushing DNS cache...")
+            rc, _ = self._run_live_command(
+                ['ipconfig', '/flushdns'], 'Reset Network Stack', timeout=30)
+
+            self.queue.put("PROGRESS:Reset Network Stack:Network stack reset complete!")
+            self.queue.put("PROGRESS:Reset Network Stack:âš ï¸ A system reboot is REQUIRED for changes to take effect.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Reset Network Stack:Error resetting network stack: {str(e)}")
+
+    def rebuild_icon_and_thumb_cache(self):
+        """Rebuild icon and thumbnail caches to fix blank/corrupted icons"""
+        self.queue.put("PROGRESS:Rebuild Icon Cache:Starting icon and thumbnail cache rebuild...")
+        self.queue.put("PROGRESS:Rebuild Icon Cache:Explorer will restart during this process.")
+
+        try:
+            # Use a single PowerShell script that handles everything atomically
+            ps_script = '''
+            try {
+                $ErrorActionPreference = "Stop"
+                Write-Host "=== Rebuilding Icon and Thumbnail Cache ==="
+
+                # Step 1: Kill Explorer
+                Write-Host "Stopping Explorer..."
+                Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+                Write-Host "Explorer stopped"
+
+                # Step 2: Delete icon cache files
+                Write-Host "Deleting icon cache..."
+                $localAppData = $env:LOCALAPPDATA
+                $explorerDir = Join-Path $localAppData "Microsoft\\Windows\\Explorer"
+
+                # Delete IconCache.db (legacy)
+                $iconCache = Join-Path $localAppData "IconCache.db"
+                if (Test-Path $iconCache) {
+                    Remove-Item -Path $iconCache -Force -ErrorAction SilentlyContinue
+                    Write-Host "Deleted: IconCache.db"
+                }
+
+                # Delete all iconcache_*.db and thumbcache_*.db files
+                if (Test-Path $explorerDir) {
+                    $cacheFiles = Get-ChildItem -Path $explorerDir -Filter "iconcache_*" -ErrorAction SilentlyContinue
+                    $thumbFiles = Get-ChildItem -Path $explorerDir -Filter "thumbcache_*" -ErrorAction SilentlyContinue
+
+                    $deletedCount = 0
+                    foreach ($file in ($cacheFiles + $thumbFiles)) {
+                        try {
+                            Remove-Item -Path $file.FullName -Force -ErrorAction Stop
+                            Write-Host "Deleted: $($file.Name)"
+                            $deletedCount++
+                        } catch {
+                            Write-Host "Could not delete: $($file.Name)"
+                        }
+                    }
+                    Write-Host "Removed $deletedCount cache files"
+                } else {
+                    Write-Host "Explorer cache directory not found"
+                }
+
+                # Step 3: Restart Explorer
+                Write-Host "Restarting Explorer..."
+                Start-Process explorer.exe
+                Start-Sleep -Seconds 2
+                Write-Host "Explorer restarted"
+
+                Write-Host "Icon and thumbnail cache rebuild complete!"
+                Write-Host "Desktop icons should refresh momentarily."
+
+            } catch {
+                # Make sure Explorer restarts even if something fails
+                Start-Process explorer.exe -ErrorAction SilentlyContinue
+                Write-Error "Error rebuilding cache: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Rebuild Icon Cache:Executing cache rebuild script...")
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Rebuild Icon Cache', timeout=120)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Rebuild Icon Cache:Operation timed out")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Rebuild Icon Cache:Icon and thumbnail cache rebuilt successfully!")
+            else:
+                self.queue.put(f"PROGRESS:Rebuild Icon Cache:Completed with return code {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Rebuild Icon Cache:Error rebuilding cache: {str(e)}")
+
+    def run_component_store_cleanup(self):
+        """Run DISM Component Store Cleanup to free disk space"""
+        self.queue.put("PROGRESS:Component Store Cleanup:Starting DISM Component Store Cleanup...")
+        self.queue.put("PROGRESS:Component Store Cleanup:This removes old update backups and may take several minutes.")
+
+        try:
+            rc, timed_out = self._run_live_command(
+                ['dism', '/Online', '/Cleanup-Image', '/StartComponentCleanup'],
+                'Component Store Cleanup', timeout=600)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Component Store Cleanup:Operation timed out after 10 minutes")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Component Store Cleanup:Component store cleanup completed successfully!")
+            else:
+                self.queue.put(f"PROGRESS:Component Store Cleanup:Completed with return code {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Component Store Cleanup:Error: {str(e)}")
+
+
+    def run_clear_print_spooler(self):
+        self.queue.put("PROGRESS:Print Spooler:Stopping Print Spooler service...")
+        self._run_live_command(['net', 'stop', 'spooler'], 'Print Spooler', timeout=30)
+        self.queue.put("PROGRESS:Print Spooler:Deleting stuck print jobs in spool/printers...")
+        self._run_live_command(['cmd.exe', '/c', 'del', '/Q', '/F', '/S', r'%systemroot%\System32\Spool\Printers\*.*'], 'Print Spooler', timeout=30)
+        self.queue.put("PROGRESS:Print Spooler:Starting Print Spooler service...")
+        self._run_live_command(['net', 'start', 'spooler'], 'Print Spooler', timeout=30)
+        self.queue.put("PROGRESS:Print Spooler:Print Spooler cleared successfully!")
+
+    def run_toggle_safe_mode(self):
+        self.queue.put("PROGRESS:Safe Mode:Checking current bcdedit status...")
+        res = subprocess.run(['bcdedit'], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if res.returncode != 0:
+            self.queue.put(f"PROGRESS:Safe Mode:Failed to read boot configuration (rc={res.returncode}).")
+            if res.stderr and res.stderr.strip():
+                self.queue.put(f"PROGRESS:Safe Mode:{res.stderr.strip()}")
+            return
+
+        if "safeboot" in res.stdout.lower():
+            self.queue.put("PROGRESS:Safe Mode:Safe Mode is currently scheduled. Disabling...")
+            change = subprocess.run(
+                ['bcdedit', '/deletevalue', '{current}', 'safeboot'],
+                capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            if change.returncode == 0:
+                self.queue.put("PROGRESS:Safe Mode:Safe Mode has been DISABLED for the next boot.")
+            else:
+                self.queue.put(f"PROGRESS:Safe Mode:Failed to disable Safe Mode (rc={change.returncode}).")
+                if change.stderr and change.stderr.strip():
+                    self.queue.put(f"PROGRESS:Safe Mode:{change.stderr.strip()}")
+        else:
+            self.queue.put("PROGRESS:Safe Mode:Safe Mode is not scheduled. Enabling with networking...")
+            change = subprocess.run(
+                ['bcdedit', '/set', '{current}', 'safeboot', 'network'],
+                capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            if change.returncode == 0:
+                self.queue.put("PROGRESS:Safe Mode:Safe Mode with Networking has been ENABLED for the next boot.")
+            else:
+                self.queue.put(f"PROGRESS:Safe Mode:Failed to enable Safe Mode (rc={change.returncode}).")
+                if change.stderr and change.stderr.strip():
+                    self.queue.put(f"PROGRESS:Safe Mode:{change.stderr.strip()}")
+
+    def run_boot_advanced_options(self):
+        # Prompt user first to prevent accidentally restarting the computer
+        from tkinter import messagebox
+        response = messagebox.askyesno("Reboot Required", "Are you sure you want to reboot into the Advanced Startup / BIOS menu? Your computer will restart immediately. Ensure all work is saved.", icon='warning')
+        if not response:
+            self.queue.put("PROGRESS:Advanced Boot:Reboot cancelled by user.")
+            return
+
+        self.queue.put("PROGRESS:Advanced Boot:Preparing to reboot into Advanced Options / Firmware...")
+        self.queue.put("PROGRESS:Advanced Boot:Attempting to schedule UEFI firmware reboot...")
+        
+        # Try to set UEFI boot flag
+        res = subprocess.run(['shutdown', '/r', '/fw', '/f', '/t', '0'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if res.returncode != 0:
+            self.queue.put("PROGRESS:Advanced Boot:Firmware boot unavailable (legacy BIOS?). Falling back to Advanced Options menu...")
+            res2 = subprocess.run(['shutdown', '/r', '/o', '/f', '/t', '0'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            if res2.returncode != 0:
+                self.queue.put("PROGRESS:Advanced Boot:Failed to schedule Advanced Boot reboot.")
+
+
+    def run_reset_hosts(self):
+        """Resets the Windows Hosts file to its default state."""
+        self.queue.put("PROGRESS:Reset Hosts File:Resetting Windows Hosts file to default...")
+        try:
+            hosts_path = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'System32', 'drivers', 'etc', 'hosts')
+            original_content = """# Copyright (c) 1993-2009 Microsoft Corp.
+#
+# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.
+#
+# This file contains the mappings of IP addresses to host names. Each
+# entry should be kept on an individual line. The IP address should
+# be placed in the first column followed by the corresponding host name.
+# The IP address and the host name should be separated by at least one
+# space.
+#
+# Additionally, comments (such as these) may be inserted on individual
+# lines or following the machine name denoted by a '#' symbol.
+#
+# For example:
+#
+#      102.54.94.97     rhino.acme.com          # source server
+#       38.25.63.10     x.acme.com              # x client host
+
+# localhost name resolution is handled within DNS itself.
+#	127.0.0.1       localhost
+#	::1             localhost
+"""
+            # Take ownership and grant full control to Administrators (in case it's locked by malware)
+            subprocess.run(['takeown', '/f', hosts_path, '/a'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(['icacls', hosts_path, '/grant', 'Administrators:F'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            with open(hosts_path, 'w', encoding='utf-8') as f:
+                f.write(original_content)
+                
+            self.queue.put("PROGRESS:Reset Hosts File:Hosts file successfully reset to default")
+            
+            # Flush DNS after resetting hosts
+            self.queue.put("PROGRESS:Reset Hosts File:Flushing DNS cache...")
+            subprocess.run(['ipconfig', '/flushdns'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Reset Hosts File:Failed to reset hosts file - {str(e)}")
+
+    def run_export_wifi_passwords(self):
+        if not messagebox.askyesno(
+            "Security Warning",
+            "This will export your saved Wi-Fi passwords as plain text to your Desktop.\n\n"
+            "Only proceed on a trusted, private machine.\n\nContinue?"
+        ):
+            self.queue.put("PROGRESS:Wi-Fi Export:Export cancelled by user.")
+            return
+        self.queue.put("PROGRESS:Wi-Fi Export:Exporting saved Wi-Fi networks to Desktop...")
+        try:
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            export_file = os.path.join(desktop, "WiFi_Passwords_Export.txt")
+            
+            res = subprocess.run(["netsh", "wlan", "show", "profiles"], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            profiles = re.findall(r"All User Profile\s*:\s*(.*)", res.stdout)
+            
+            with open(export_file, "w", encoding="utf-8") as f:
+                f.write("=== Saved Wi-Fi Passwords ===\n\n")
+                if not profiles:
+                    f.write("No Wi-Fi profiles found on this system.\n")
+                
+                for profile in profiles:
+                    profile = profile.strip()
+                    key_res = subprocess.run(["netsh", "wlan", "show", "profile", f'name={profile}', "key=clear"], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    key_match = re.search(r"Key Content\s*:\s*(.*)", key_res.stdout)
+                    password = key_match.group(1).strip() if key_match else "No Password / Open"
+                    f.write(f"Network: {profile}\nPassword: {password}\n\n")
+                    
+            self.queue.put(f"PROGRESS:Wi-Fi Export:Successfully exported to {export_file}")
+            # Try to open it
+            try:
+                os.startfile(export_file)
+            except OSError:
+                pass
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Wi-Fi Export:Error during export: {str(e)}")
+
+    def run_rebuild_font_cache(self):
+        """Rebuild the Windows font cache to fix corrupted/missing fonts"""
+        self.queue.put("PROGRESS:Rebuild Font Cache:Starting font cache rebuild...")
+
+        try:
+            # Stop the font cache service
+            self.queue.put("PROGRESS:Rebuild Font Cache:Stopping Font Cache service...")
+            rc, _ = self._run_live_command(['net', 'stop', 'FontCache'], 'Rebuild Font Cache', timeout=30)
+
+            # Also stop FontCache3.0.0.0 if it exists
+            self.queue.put("PROGRESS:Rebuild Font Cache:Stopping FontCache3.0.0.0 service...")
+            self._run_live_command(['net', 'stop', 'FontCache3.0.0.0'], 'Rebuild Font Cache', timeout=30)
+
+            # Delete font cache files
+            self.queue.put("PROGRESS:Rebuild Font Cache:Deleting font cache files...")
+            font_cache_dir = os.path.join(os.environ.get('WinDir', r'C:\Windows'), 'ServiceProfiles', 'LocalService', 'AppData', 'Local', 'FontCache')
+            deleted = 0
+            if os.path.exists(font_cache_dir):
+                for f in os.listdir(font_cache_dir):
+                    fpath = os.path.join(font_cache_dir, f)
+                    try:
+                        if os.path.isfile(fpath):
+                            os.remove(fpath)
+                            deleted += 1
+                            self.queue.put(f"PROGRESS:Rebuild Font Cache:Deleted: {f}")
+                    except Exception:
+                        self.queue.put(f"PROGRESS:Rebuild Font Cache:Could not delete: {f}")
+
+            # Also check for ~FontCache-*.dat in System directory
+            sys_dir = os.path.join(os.environ.get('WinDir', r'C:\Windows'), 'System32')
+            for f in os.listdir(sys_dir):
+                if f.startswith('~FontCache') and f.endswith('.dat'):
+                    try:
+                        os.remove(os.path.join(sys_dir, f))
+                        deleted += 1
+                        self.queue.put(f"PROGRESS:Rebuild Font Cache:Deleted: {f}")
+                    except Exception:
+                        pass
+
+            self.queue.put(f"PROGRESS:Rebuild Font Cache:Deleted {deleted} cache files")
+
+            # Restart services
+            self.queue.put("PROGRESS:Rebuild Font Cache:Restarting Font Cache service...")
+            self._run_live_command(['net', 'start', 'FontCache'], 'Rebuild Font Cache', timeout=30)
+            self._run_live_command(['net', 'start', 'FontCache3.0.0.0'], 'Rebuild Font Cache', timeout=30)
+
+            self.queue.put("PROGRESS:Rebuild Font Cache:Font cache rebuilt. Fonts should refresh shortly.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Rebuild Font Cache:Error: {str(e)}")
+
+    def run_reset_search_index(self):
+        """Reset Windows Search Index to fix broken search/Cortana"""
+        self.queue.put("PROGRESS:Reset Search Index:Starting Windows Search index reset...")
+
+        try:
+            # Stop the Windows Search service
+            self.queue.put("PROGRESS:Reset Search Index:Stopping Windows Search service...")
+            rc, _ = self._run_live_command(['net', 'stop', 'WSearch'], 'Reset Search Index', timeout=30)
+
+            # Delete the search index database
+            self.queue.put("PROGRESS:Reset Search Index:Deleting search index database...")
+            search_data_dir = os.path.join(os.environ.get('ProgramData', r'C:\ProgramData'),
+                                           'Microsoft', 'Search', 'Data', 'Applications', 'Windows')
+            if os.path.exists(search_data_dir):
+                deleted = 0
+                for root, dirs, files in os.walk(search_data_dir):
+                    for f in files:
+                        try:
+                            os.remove(os.path.join(root, f))
+                            deleted += 1
+                        except Exception:
+                            pass
+                self.queue.put(f"PROGRESS:Reset Search Index:Deleted {deleted} index files")
+            else:
+                self.queue.put("PROGRESS:Reset Search Index:Search data directory not found")
+
+            # Restart Windows Search
+            self.queue.put("PROGRESS:Reset Search Index:Restarting Windows Search service...")
+            rc, _ = self._run_live_command(['net', 'start', 'WSearch'], 'Reset Search Index', timeout=30)
+
+            self.queue.put("PROGRESS:Reset Search Index:Search index reset! Windows will rebuild the index in the background.")
+            self.queue.put("PROGRESS:Reset Search Index:Search results may be incomplete until indexing finishes.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Reset Search Index:Error: {str(e)}")
+
+    def run_network_adapter_reset(self):
+        """Disable and re-enable all network adapters"""
+        self.queue.put("PROGRESS:Network Adapter Reset:Resetting all network adapters...")
+        self.queue.put("PROGRESS:Network Adapter Reset:Network will temporarily disconnect.")
+
+        try:
+            ps_script = '''
+            $adapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
+            Write-Host "Found $($adapters.Count) active adapter(s)"
+            foreach ($adapter in $adapters) {
+                Write-Host "Disabling: $($adapter.Name) ($($adapter.InterfaceDescription))"
+                Disable-NetAdapter -Name $adapter.Name -Confirm:$false
+            }
+            Start-Sleep -Seconds 3
+            $allAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Disabled" }
+            foreach ($adapter in $allAdapters) {
+                Write-Host "Re-enabling: $($adapter.Name)"
+                Enable-NetAdapter -Name $adapter.Name -Confirm:$false
+            }
+            Start-Sleep -Seconds 3
+            Write-Host "All adapters have been reset"
+            Get-NetAdapter | Format-Table Name, Status, LinkSpeed -AutoSize | Out-String | Write-Host
+            '''
+
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Network Adapter Reset', timeout=60)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Network Adapter Reset:Operation timed out")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Network Adapter Reset:Network adapters reset successfully!")
+            else:
+                self.queue.put(f"PROGRESS:Network Adapter Reset:Completed with code {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Network Adapter Reset:Error: {str(e)}")
+
+    def run_ping_test(self):
+        """Run a connectivity check against multiple targets"""
+        self.queue.put("PROGRESS:Ping Test:Starting connectivity check...")
+
+        targets = [
+            ("Default Gateway", None),
+            ("Google DNS", "8.8.8.8"),
+            ("Cloudflare DNS", "1.1.1.1"),
+            ("Google.com", "google.com"),
+            ("Microsoft.com", "microsoft.com")
+        ]
+
+        try:
+            # Get default gateway first
+            self.queue.put("PROGRESS:Ping Test:Detecting default gateway...")
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-Command',
+                 '(Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop'],
+                capture_output=True, text=True, timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            gateway = result.stdout.strip()
+            if gateway:
+                targets[0] = ("Default Gateway", gateway)
+                self.queue.put(f"PROGRESS:Ping Test:Default gateway: {gateway}")
+            else:
+                self.queue.put("PROGRESS:Ping Test:Could not detect default gateway, skipping")
+                targets = targets[1:]
+
+            results_summary = []
+            for name, addr in targets:
+                if addr is None:
+                    continue
+                self.queue.put(f"PROGRESS:Ping Test:Pinging {name} ({addr})...")
+                rc, _ = self._run_live_command(
+                    ['ping', '-n', '4', '-w', '1000', addr],
+                    'Ping Test', timeout=15)
+                status = "PASS" if rc == 0 else "FAIL"
+                results_summary.append(f"  {status}: {name} ({addr})")
+                self.queue.put(f"PROGRESS:Ping Test:{status} - {name}")
+
+            self.queue.put("PROGRESS:Ping Test:=== Results Summary ===")
+            for line in results_summary:
+                self.queue.put(f"PROGRESS:Ping Test:{line}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Ping Test:Error: {str(e)}")
+
+    def run_defrag_optimize(self):
+        """Optimize drives - TRIM for SSDs, Defrag for HDDs only. NEVER defrags an SSD."""
+        self.queue.put("PROGRESS:Optimize Drives:Starting drive optimization...")
+        self.queue.put("PROGRESS:Optimize Drives:Detecting drive types (SSD vs HDD)...")
+
+        try:
+            # Use PowerShell to detect drive types and optimize accordingly
+            ps_script = '''
+            $ErrorActionPreference = "Continue"
+
+            # Get all fixed volumes
+            $volumes = Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter -ne $null }
+
+            foreach ($vol in $volumes) {
+                $letter = $vol.DriveLetter
+                Write-Host ""
+                Write-Host "=== Processing Drive $($letter): ==="
+
+                # Detect if the drive is SSD or HDD using Get-PhysicalDisk
+                $partition = Get-Partition -DriveLetter $letter -ErrorAction SilentlyContinue
+                if ($partition) {
+                    $disk = Get-PhysicalDisk | Where-Object { $_.DeviceId -eq $partition.DiskNumber }
+                    $mediaType = $disk.MediaType
+
+                    if ($mediaType -eq "SSD" -or $mediaType -eq "Unspecified") {
+                        # SSD or NVMe -- run TRIM only, NEVER defrag
+                        Write-Host "Drive $($letter): is $mediaType -- Running TRIM (retrim)"
+                        Write-Host "IMPORTANT: Defrag is SKIPPED for this drive (SSD protection)"
+                        Optimize-Volume -DriveLetter $letter -ReTrim -Verbose
+                        Write-Host "TRIM completed for drive $($letter):"
+                    } elseif ($mediaType -eq "HDD") {
+                        # HDD -- safe to defrag
+                        Write-Host "Drive $($letter): is HDD -- Running defragmentation"
+                        Optimize-Volume -DriveLetter $letter -Defrag -Verbose
+                        Write-Host "Defragmentation completed for drive $($letter):"
+                    } else {
+                        Write-Host "Drive $($letter): Unknown media type '$mediaType' -- Running TRIM to be safe"
+                        Optimize-Volume -DriveLetter $letter -ReTrim -Verbose
+                    }
+                } else {
+                    Write-Host "Could not detect drive type for $($letter): -- skipping"
+                }
+            }
+
+            Write-Host ""
+            Write-Host "=== Drive optimization complete ==="
+            '''
+
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Optimize Drives', timeout=1800)  # 30 min timeout for large HDDs
+
+            if timed_out:
+                self.queue.put("PROGRESS:Optimize Drives:Operation timed out (drives may still be optimizing)")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Optimize Drives:All drives optimized successfully!")
+            else:
+                self.queue.put(f"PROGRESS:Optimize Drives:Completed with return code {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Optimize Drives:Error: {str(e)}")
+
+    def run_defender_scan(self):
+        """Trigger a full system scan using Windows Defender"""
+        self.queue.put("PROGRESS:Defender Full Scan:Starting Windows Defender full system scan...")
+        self.queue.put("PROGRESS:Defender Full Scan:This will take a LONG time. Scan runs in the background.")
+
+        try:
+            # Find MpCmdRun.exe
+            mp_path = os.path.join(os.environ.get('ProgramFiles', r'C:\Program Files'),
+                                   'Windows Defender', 'MpCmdRun.exe')
+            if not os.path.exists(mp_path):
+                # Try alternate location
+                mp_path = os.path.join(os.environ.get('ProgramW6432', r'C:\Program Files'),
+                                       'Windows Defender', 'MpCmdRun.exe')
+
+            if not os.path.exists(mp_path):
+                self.queue.put("PROGRESS:Defender Full Scan:MpCmdRun.exe not found. Is Windows Defender installed?")
+                return
+
+            self.queue.put(f"PROGRESS:Defender Full Scan:Using: {mp_path}")
+            self.queue.put("PROGRESS:Defender Full Scan:Updating definitions first...")
+
+            # Update definitions
+            rc, _ = self._run_live_command(
+                [mp_path, '-SignatureUpdate'], 'Defender Full Scan', timeout=120)
+
+            # Start full scan
+            self.queue.put("PROGRESS:Defender Full Scan:Starting full scan (type 2)...")
+            rc, timed_out = self._run_live_command(
+                [mp_path, '-Scan', '-ScanType', '2'], 'Defender Full Scan', timeout=7200)  # 2hr timeout
+
+            if timed_out:
+                self.queue.put("PROGRESS:Defender Full Scan:Scan timed out. Check Windows Security for results.")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Defender Full Scan:Full scan completed! No threats found.")
+            elif rc == 2:
+                self.queue.put("PROGRESS:Defender Full Scan:Threats were found! Open Windows Security to review and take action.")
+            else:
+                self.queue.put(f"PROGRESS:Defender Full Scan:Scan finished with code {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Defender Full Scan:Error: {str(e)}")
+
+    def run_clear_browser_cache(self):
+        """Clear cache folders for Edge, Chrome, and Firefox"""
+        self.queue.put("PROGRESS:Clear Browser Cache:Starting browser cache cleanup...")
+        self.queue.put("PROGRESS:Clear Browser Cache:Close all browsers for best results.")
+
+        try:
+            local_app_data = os.environ.get('LOCALAPPDATA', '')
+            app_data = os.environ.get('APPDATA', '')
+            total_deleted = 0
+            total_freed = 0  # bytes
+
+            browsers = {
+                'Microsoft Edge': os.path.join(local_app_data, 'Microsoft', 'Edge', 'User Data', 'Default', 'Cache'),
+                'Google Chrome': os.path.join(local_app_data, 'Google', 'Chrome', 'User Data', 'Default', 'Cache'),
+                'Mozilla Firefox': None  # Firefox uses profiles, handled separately
+            }
+
+            # Handle Edge and Chrome
+            for name, cache_dir in browsers.items():
+                if cache_dir is None:
+                    continue
+                self.queue.put(f"PROGRESS:Clear Browser Cache:Checking {name}...")
+
+                # Also check Cache_Data subfolder (newer Chromium)
+                check_dirs = [cache_dir]
+                cache_data = os.path.join(os.path.dirname(cache_dir), 'Cache_Data')
+                code_cache = os.path.join(os.path.dirname(cache_dir), 'Code Cache')
+                check_dirs.extend([cache_data, code_cache])
+
+                for d in check_dirs:
+                    if os.path.exists(d):
+                        count = 0
+                        size = 0
+                        for root, dirs, files in os.walk(d):
+                            for f in files:
+                                fpath = os.path.join(root, f)
+                                try:
+                                    size += os.path.getsize(fpath)
+                                    os.remove(fpath)
+                                    count += 1
+                                except Exception:
+                                    pass
+                        total_deleted += count
+                        total_freed += size
+                        self.queue.put(f"PROGRESS:Clear Browser Cache:{name}: Deleted {count} files ({size // 1048576} MB)")
+
+            # Handle Firefox separately (profile-based)
+            self.queue.put("PROGRESS:Clear Browser Cache:Checking Mozilla Firefox...")
+            ff_profiles = os.path.join(app_data, 'Mozilla', 'Firefox', 'Profiles')
+            if os.path.exists(ff_profiles):
+                for profile in os.listdir(ff_profiles):
+                    cache_dir = os.path.join(ff_profiles, profile, 'cache2')
+                    if os.path.exists(cache_dir):
+                        count = 0
+                        size = 0
+                        for root, dirs, files in os.walk(cache_dir):
+                            for f in files:
+                                fpath = os.path.join(root, f)
+                                try:
+                                    size += os.path.getsize(fpath)
+                                    os.remove(fpath)
+                                    count += 1
+                                except Exception:
+                                    pass
+                        total_deleted += count
+                        total_freed += size
+                        self.queue.put(f"PROGRESS:Clear Browser Cache:Firefox ({profile}): Deleted {count} files ({size // 1048576} MB)")
+            else:
+                self.queue.put("PROGRESS:Clear Browser Cache:Firefox not found")
+
+            self.queue.put(f"PROGRESS:Clear Browser Cache:Total: {total_deleted} files deleted, {total_freed // 1048576} MB freed")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Clear Browser Cache:Error: {str(e)}")
+
+    def run_event_log_viewer(self):
+        """Show recent errors and warnings from Windows Event Log"""
+        self.queue.put("PROGRESS:Event Log Viewer:Retrieving recent Event Log entries...")
+
+        try:
+            ps_script = '''
+            Write-Host "=== SYSTEM LOG - Recent Errors & Warnings (last 25) ==="
+            Write-Host ""
+            $sysEvents = Get-WinEvent -LogName System -MaxEvents 500 -ErrorAction SilentlyContinue |
+                Where-Object { $_.Level -le 3 } |
+                Select-Object -First 25
+            foreach ($evt in $sysEvents) {
+                $lvl = switch ($evt.Level) { 1 {"CRITICAL"} 2 {"ERROR"} 3 {"WARNING"} default {"INFO"} }
+                $time = $evt.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss")
+                Write-Host "[$lvl] $time | Source: $($evt.ProviderName)"
+                Write-Host "  $($evt.Message.Split([Environment]::NewLine)[0])"
+                Write-Host ""
+            }
+            if (-not $sysEvents) { Write-Host "No recent errors or warnings in System log." }
+
+            Write-Host ""
+            Write-Host "=== APPLICATION LOG - Recent Errors & Warnings (last 25) ==="
+            Write-Host ""
+            $appEvents = Get-WinEvent -LogName Application -MaxEvents 500 -ErrorAction SilentlyContinue |
+                Where-Object { $_.Level -le 3 } |
+                Select-Object -First 25
+            foreach ($evt in $appEvents) {
+                $lvl = switch ($evt.Level) { 1 {"CRITICAL"} 2 {"ERROR"} 3 {"WARNING"} default {"INFO"} }
+                $time = $evt.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss")
+                Write-Host "[$lvl] $time | Source: $($evt.ProviderName)"
+                Write-Host "  $($evt.Message.Split([Environment]::NewLine)[0])"
+                Write-Host ""
+            }
+            if (-not $appEvents) { Write-Host "No recent errors or warnings in Application log." }
+            '''
+
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Event Log Viewer', timeout=60)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Event Log Viewer:Timed out reading event logs")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Event Log Viewer:Event log review complete")
+            else:
+                self.queue.put(f"PROGRESS:Event Log Viewer:Completed with code {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Event Log Viewer:Error: {str(e)}")
+
+    def run_msrt_scan(self):
+        """Run Microsoft Malicious Software Removal Tool"""
+        self.queue.put("PROGRESS:MSRT Malware Scan:Starting MSRT malware scan...")
+
+        try:
+            # Find MRT.exe
+            mrt_path = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'MRT.exe')
+
+            if not os.path.exists(mrt_path):
+                self.queue.put("PROGRESS:MSRT Malware Scan:MRT.exe not found. It may not be installed.")
+                self.queue.put("PROGRESS:MSRT Malware Scan:MSRT is delivered via Windows Update. Make sure updates are current.")
+                return
+
+            self.queue.put(f"PROGRESS:MSRT Malware Scan:Found MRT.exe at: {mrt_path}")
+            self.queue.put("PROGRESS:MSRT Malware Scan:Running quick scan (this may take several minutes)...")
+
+            # Run MRT in quiet mode with quick scan (/Q = quiet, /F:Y = full scan, no /F = quick)
+            rc, timed_out = self._run_live_command(
+                [mrt_path, '/Q'], 'MSRT Malware Scan', timeout=1800)  # 30 min timeout
+
+            if timed_out:
+                self.queue.put("PROGRESS:MSRT Malware Scan:Scan timed out")
+            elif rc == 0:
+                self.queue.put("PROGRESS:MSRT Malware Scan:MSRT scan completed! No threats found.")
+            else:
+                self.queue.put(f"PROGRESS:MSRT Malware Scan:Scan finished with code {rc}")
+
+            # Check for MSRT log
+            mrt_log = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'Debug', 'mrt.log')
+            if os.path.exists(mrt_log):
+                self.queue.put(f"PROGRESS:MSRT Malware Scan:Detailed log available at: {mrt_log}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:MSRT Malware Scan:Error: {str(e)}")
+
+    # ==================== SYSTEM TASKS METHODS ====================
+
+    def clean_temp_files(self):
+        """Clean temporary files from system directories"""
+        self.queue.put("PROGRESS:Clean Temp Files:Starting temporary files cleanup...")
+        self.queue.put("PROGRESS:Clean Temp Files:Checking temporary directories...")
+
+        try:
+            temp_paths = [
+                os.environ.get('TEMP', 'C:\\Temp'),
+                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'Temp'),
+                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'Prefetch')
+            ]
+
+            for i, path in enumerate(temp_paths):
+                try:
+                    # Sanitize path
+                    safe_path = SecurityUtils.sanitize_path(path)
+                    self.queue.put(
+                        f"PROGRESS:Clean Temp Files:Processing directory {i + 1}/{len(temp_paths)}: {safe_path}")
+
+                    # Check if path exists
+                    if not os.path.exists(safe_path):
+                        self.queue.put(f"PROGRESS:Clean Temp Files:Path does not exist: {safe_path}")
+                        continue
+
+                    # Count files before deletion
+                    try:
+                        file_count = len(os.listdir(safe_path))
+                        self.queue.put(f"PROGRESS:Clean Temp Files:Found {file_count} items in {safe_path}")
+                    except:
+                        self.queue.put(f"PROGRESS:Clean Temp Files:Unable to count items in {safe_path}")
+
+                    # Use PowerShell to clean files with detailed output
+                    ps_command = f'''
+                    $ErrorActionPreference = 'SilentlyContinue'
+                    $path = "{safe_path}"
+                    $deletedCount = 0
+                    $failedCount = 0
+
+                    if (Test-Path $path) {{
+                        Get-ChildItem -Path $path -Force | ForEach-Object {{
+                            try {{
+                                Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Stop
+                                $deletedCount++
+                                Write-Host "Deleted: $($_.Name)"
+                            }} catch {{
+                                $failedCount++
+                                Write-Host "Could not delete: $($_.Name) - $($_.Exception.Message)"
+                            }}
+                        }}
+                    }}
+
+                    Write-Host "Summary: Deleted $deletedCount items, Failed: $failedCount items"
+                    '''
+
+                    # Run PowerShell command
+                    self.queue.put(f"PROGRESS:Clean Temp Files:Executing PowerShell cleanup command...")
+                    result = subprocess.run(
+                        ['powershell', '-Command', ps_command],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=300,  # 5 minute timeout
+                        creationflags=CREATE_NO_WINDOW  # Hide console window
+                    )
+
+                    # Log output
+                    if result.stdout.strip():
+                        for line in result.stdout.strip().split('\n'):
+                            if line.strip():
+                                self.queue.put(f"PROGRESS:Clean Temp Files:{line.strip()}")
+
+                    if result.stderr.strip():
+                        self.queue.put(f"PROGRESS:Clean Temp Files:Errors: {result.stderr.strip()}")
+
+                except ValueError as e:
+                    self.queue.put(f"PROGRESS:Clean Temp Files:Invalid path rejected: {path}")
+                except subprocess.TimeoutExpired:
+                    self.queue.put(f"PROGRESS:Clean Temp Files:Timeout cleaning: {path}")
+                except Exception as e:
+                    self.queue.put(f"PROGRESS:Clean Temp Files:Error cleaning {path}: {str(e)}")
+
+            self.queue.put("PROGRESS:Clean Temp Files:Temporary files cleanup completed")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Clean Temp Files:Error in clean temp files: {str(e)}")
+
+    def run_disk_cleanup(self):
+        """Run Windows disk cleanup with all options enabled"""
+        self.queue.put("PROGRESS:Disk Cleanup:Starting disk cleanup with all options...")
+        self.queue.put("PROGRESS:Disk Cleanup:This process may take several minutes. Please be patient.")
+
+        try:
+            # Safe registry manipulation with validation
+            registry_key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
+
+            # Validate registry path
+            SecurityUtils.validate_registry_key(registry_key_path)
+
+            try:
+                # Open the key
+                self.queue.put("PROGRESS:Disk Cleanup:Accessing Windows registry...")
+                key = winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    registry_key_path,
+                    0,
+                    winreg.KEY_READ
+                )
+
+                # Get all subkeys (cleanup items)
+                subkey_count = winreg.QueryInfoKey(key)[0]
+                cleanup_items = []
+
+                for i in range(subkey_count):
+                    subkey_name = winreg.EnumKey(key, i)
+                    cleanup_items.append(subkey_name)
+
+                winreg.CloseKey(key)
+                self.queue.put(f"PROGRESS:Disk Cleanup:Found {len(cleanup_items)} cleanup items")
+
+                # Set StateFlags value for each item to 2 (selected for profile 1)
+                for i, item in enumerate(cleanup_items):
+                    try:
+                        self.queue.put(f"PROGRESS:Disk Cleanup:Configuring item {i + 1}/{len(cleanup_items)}: {item}")
+                        item_key_path = f"{registry_key_path}\\{item}"
+                        # Validate each subkey path
+                        SecurityUtils.validate_registry_key(item_key_path)
+
+                        item_key = winreg.OpenKey(
+                            winreg.HKEY_LOCAL_MACHINE,
+                            item_key_path,
+                            0,
+                            winreg.KEY_WRITE
+                        )
+
+                        # Set StateFlags0001 to 2 (selected for profile 1)
+                        winreg.SetValueEx(item_key, "StateFlags0001", 0, winreg.REG_DWORD, 2)
+                        winreg.CloseKey(item_key)
+                        self.queue.put(f"PROGRESS:Disk Cleanup:Enabled: {item}")
+                    except Exception as e:
+                        self.queue.put(f"PROGRESS:Disk Cleanup:Error enabling {item}: {str(e)}")
+
+                self.queue.put("PROGRESS:Disk Cleanup:All cleanup options enabled")
+
+                # Run disk cleanup safely
+                try:
+                    self.queue.put("PROGRESS:Disk Cleanup:Executing: cleanmgr /sagerun:1")
+                    self.queue.put("PROGRESS:Disk Cleanup:Starting disk cleanup process...")
+
+                    process = subprocess.Popen(
+                        ['cleanmgr', '/sagerun:1'],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+
+                    timeout_seconds = 300  # 5 minutes
+                    start_time = time.time()
+
+                    while True:
+                        retcode = process.poll()
+                        if retcode is not None:
+                            if retcode == 0:
+                                self.queue.put("PROGRESS:Disk Cleanup:Disk cleanup completed successfully 100%")
+                            else:
+                                self.queue.put(f"PROGRESS:Disk Cleanup:Disk cleanup completed (code: {retcode}) 100%")
+                            break
+
+                        elapsed = time.time() - start_time
+                        if elapsed > timeout_seconds:
+                            process.kill()
+                            process.wait()
+                            self.queue.put("PROGRESS:Disk Cleanup:Disk cleanup timed out after 5 minutes, process terminated")
+                            break
+
+                        pct = min(int((elapsed / timeout_seconds) * 90) + 5, 95)
+                        self.queue.put(f"PROGRESS:Disk Cleanup:Disk cleanup running... {pct}%")
+                        time.sleep(3)
+
+                    # Wait for any lingering cleanmgr child processes before proceeding
+                    self.queue.put("PROGRESS:Disk Cleanup:Waiting for cleanup processes to settle...")
+                    settle_start = time.time()
+                    while time.time() - settle_start < 60:
+                        check = subprocess.run(
+                            ['tasklist', '/fi', 'IMAGENAME eq cleanmgr.exe', '/fo', 'csv', '/nh'],
+                            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW, timeout=10
+                        )
+                        if 'cleanmgr.exe' not in check.stdout.lower():
+                            break
+                        time.sleep(3)
+
+                    # Explicitly empty Recycle Bin on all drives (including G:) synchronously
+                    self.queue.put("PROGRESS:Disk Cleanup:Emptying Recycle Bin on all drives... 97%")
+                    subprocess.run(
+                        ['powershell', '-NonInteractive', '-Command',
+                         'Clear-RecycleBin -Force -ErrorAction SilentlyContinue'],
+                        capture_output=True, timeout=120, creationflags=CREATE_NO_WINDOW
+                    )
+                    self.queue.put("PROGRESS:Disk Cleanup:All cleanup completed 100%")
+
+                except Exception as e:
+                    self.queue.put(f"PROGRESS:Disk Cleanup:Error running disk cleanup: {str(e)}")
+
+            except Exception as e:
+                self.queue.put(f"PROGRESS:Disk Cleanup:Error configuring registry: {str(e)}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Disk Cleanup:Error in disk cleanup: {str(e)}")
+
+    def perform_disable_fast_startup(self):
+        """Disable Windows fast startup feature"""
+        self.queue.put("PROGRESS:Disable Fast Startup:Starting fast startup disable process...")
+        try:
+            # Step 1: Disable hibernation safely
+            self.queue.put("PROGRESS:Disable Fast Startup:Step 1: Disabling hibernation...")
+            try:
+                self.queue.put("PROGRESS:Disable Fast Startup:Executing: powercfg /h off")
+                result = subprocess.run(
+                    ['powercfg', '/h', 'off'],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=30,
+                    creationflags=CREATE_NO_WINDOW  # Hide console window
+                )
+                self.queue.put("PROGRESS:Disable Fast Startup:Hibernation disabled successfully")
+                if result.stdout.strip():
+                    self.queue.put(f"PROGRESS:Disable Fast Startup:Output: {result.stdout.strip()}")
+            except subprocess.CalledProcessError as e:
+                self.queue.put(f"PROGRESS:Disable Fast Startup:Powercfg error: {str(e)}")
+                return
+            except subprocess.TimeoutExpired:
+                self.queue.put("PROGRESS:Disable Fast Startup:Powercfg command timed out")
+                return
+
+            # Step 2: Update registry safely
+            self.queue.put("PROGRESS:Disable Fast Startup:Step 2: Updating registry settings...")
+            registry_key_path = r"SYSTEM\CurrentControlSet\Control\Session Manager\Power"
+            registry_value = "HiberbootEnabled"
+
+            try:
+                # Validate registry path
+                SecurityUtils.validate_registry_key(registry_key_path)
+
+                # Open the key with write access
+                self.queue.put("PROGRESS:Disable Fast Startup:Opening registry key for write access...")
+                key = winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    registry_key_path,
+                    0,
+                    winreg.KEY_WRITE
+                )
+
+                # Set the value to 0 (disable Fast Startup)
+                self.queue.put("PROGRESS:Disable Fast Startup:Setting HiberbootEnabled to 0...")
+                winreg.SetValueEx(key, registry_value, 0, winreg.REG_DWORD, 0)
+                winreg.CloseKey(key)
+                self.queue.put("PROGRESS:Disable Fast Startup:Registry updated successfully")
+            except WindowsError as e:
+                if e.errno == 2:  # Key not found
+                    try:
+                        # Create the key
+                        self.queue.put("PROGRESS:Disable Fast Startup:Registry key not found, creating it...")
+                        key = winreg.CreateKey(
+                            winreg.HKEY_LOCAL_MACHINE,
+                            registry_key_path
+                        )
+                        # Set the value
+                        self.queue.put("PROGRESS:Disable Fast Startup:Setting HiberbootEnabled to 0 in new key...")
+                        winreg.SetValueEx(key, registry_value, 0, winreg.REG_DWORD, 0)
+                        winreg.CloseKey(key)
+                        self.queue.put("PROGRESS:Disable Fast Startup:Registry key created and updated")
+                    except Exception as create_error:
+                        self.queue.put(
+                            f"PROGRESS:Disable Fast Startup:Error creating registry key: {str(create_error)}")
+                else:
+                    self.queue.put(f"PROGRESS:Disable Fast Startup:Registry error: {str(e)}")
+
+            # Step 3: Verify changes
+            self.queue.put("PROGRESS:Disable Fast Startup:Step 3: Verifying changes...")
+            try:
+                key = winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    registry_key_path,
+                    0,
+                    winreg.KEY_READ
+                )
+                value, _ = winreg.QueryValueEx(key, registry_value)
+                winreg.CloseKey(key)
+
+                if value == 0:
+                    self.queue.put("PROGRESS:Disable Fast Startup:Fast startup disabled successfully")
+                else:
+                    self.queue.put(f"PROGRESS:Disable Fast Startup:Warning: Registry value is {value}, expected 0")
+            except WindowsError as e:
+                self.queue.put(f"PROGRESS:Disable Fast Startup:Could not verify registry: {str(e)}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Disable Fast Startup:Error disabling fast startup: {str(e)}")
+
+    def check_and_install_windows_updates(self):
+        """Check for and install Windows updates with detailed progress"""
+        self.queue.put("PROGRESS:Windows Updates:Starting Windows Update process...")
+        self.queue.put("PROGRESS:Windows Updates:This process may take a long time. Please be patient.")
+
+        try:
+            # PowerShell script to check for and install Windows updates with detailed progress
+            ps_script = '''
+            try {
+                # Create update session
+                $updateSession = New-Object -ComObject Microsoft.Update.Session
+                $updateSearcher = $updateSession.CreateUpdateSearcher()
+
+                Write-Host "Phase: Searching for updates..."
+                # Search for updates
+                Write-Host "Searching for updates..."
+                $searchResult = $updateSearcher.Search("IsInstalled=0")
+
+                if ($searchResult.Updates.Count -eq 0) {
+                    Write-Host "No updates found."
+                    exit 0
+                }
+
+                Write-Host "Found $($searchResult.Updates.Count) updates:"
+                foreach ($update in $searchResult.Updates) {
+                    Write-Host "- $($update.Title)"
+                }
+
+                # Download updates
+                $updatesToDownload = New-Object -ComObject Microsoft.Update.UpdateColl
+                foreach ($update in $searchResult.Updates) {
+                    if (-not $update.IsDownloaded) {
+                        $updatesToDownload.Add($update) | Out-Null
+                    }
+                }
+
+                if ($updatesToDownload.Count -gt 0) {
+                    Write-Host "Phase: Downloading updates..."
+                    Write-Host "Downloading $($updatesToDownload.Count) updates..."
+                    $downloader = $updateSession.CreateUpdateDownloader()
+                    $downloader.Updates = $updatesToDownload
+                    $downloadResult = $downloader.Download()
+
+                    if ($downloadResult.ResultCode -eq 2) {
+                        Write-Host "Updates downloaded successfully."
+                    } else {
+                        Write-Host "Failed to download updates. Result code: $($downloadResult.ResultCode)"
+                        exit 1
+                    }
+                } else {
+                    Write-Host "All updates are already downloaded."
+                }
+
+                # Install updates
+                $updatesToInstall = New-Object -ComObject Microsoft.Update.UpdateColl
+                foreach ($update in $searchResult.Updates) {
+                    if ($update.IsDownloaded) {
+                        $updatesToInstall.Add($update) | Out-Null
+                    }
+                }
+
+                if ($updatesToInstall.Count -gt 0) {
+                    Write-Host "Phase: Installing updates..."
+                    Write-Host "Installing $($updatesToInstall.Count) updates..."
+                    $installer = $updateSession.CreateUpdateInstaller()
+                    $installer.Updates = $updatesToInstall
+                    $installResult = $installer.Install()
+
+                    if ($installResult.ResultCode -eq 2) {
+                        Write-Host "Updates installed successfully."
+
+                        if ($installResult.RebootRequired) {
+                            Write-Host "A system reboot is required to complete the installation."
+                            exit 2
+                        }
+                    } else {
+                        Write-Host "Failed to install updates. Result code: $($installResult.ResultCode)"
+                        exit 1
+                    }
+                } else {
+                    Write-Host "No updates to install."
+                }
+
+                exit 0
+            }
+            catch {
+                Write-Error "Error checking/installing updates: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            # Run PowerShell script with live output
+            self.queue.put("PROGRESS:Windows Updates:Executing PowerShell update script...")
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-Command', ps_script], 'Windows Updates', timeout=7200)
+
+            # Check return code
+            if timed_out:
+                self.queue.put("PROGRESS:Windows Updates:Windows updates process timed out after 2 hours")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Windows Updates:Windows updates completed successfully")
+            elif rc == 2:
+                self.queue.put("PROGRESS:Windows Updates:Windows updates installed successfully")
+                self.queue.put("PROGRESS:Windows Updates:A system reboot is required to complete the installation")
+                self.queue.put("WINDOWS_UPDATES_REBOOT_REQUIRED")
+                self.root.after(100, self.prompt_reboot_for_updates)
+            else:
+                self.queue.put(
+                    f"PROGRESS:Windows Updates:Windows updates completed with return code: {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Windows Updates:Error in Windows updates: {str(e)}")
+
+    def check_and_install_device_firmware(self):
+        """Search, download, and install missing OEM driver/firmware updates from Windows Update."""
+        self.queue.put("PROGRESS:Device Firmware:Searching Windows Update catalog for missing driver/firmware updates...")
+
+        ps_script = r'''
+        try {
+            $session = New-Object -ComObject Microsoft.Update.Session
+            $searcher = $session.CreateUpdateSearcher()
+
+            # Driver-type updates include many OEM drivers and firmware packages.
+            $searchResult = $searcher.Search("IsInstalled=0 and Type='Driver'")
+            $updates = $searchResult.Updates
+
+            if ($updates.Count -eq 0) {
+                Write-Host "No missing OEM driver/firmware updates found via Windows Update."
+                exit 0
+            }
+
+            Write-Host "Found $($updates.Count) missing driver/firmware update(s):"
+            for ($i = 0; $i -lt $updates.Count; $i++) {
+                $u = $updates.Item($i)
+                Write-Host " - $($u.Title)"
+            }
+
+            $toDownload = New-Object -ComObject Microsoft.Update.UpdateColl
+            for ($i = 0; $i -lt $updates.Count; $i++) {
+                $u = $updates.Item($i)
+                if (-not $u.IsDownloaded) { [void]$toDownload.Add($u) }
+            }
+
+            if ($toDownload.Count -gt 0) {
+                Write-Host "Downloading $($toDownload.Count) driver/firmware update(s)..."
+                $downloader = $session.CreateUpdateDownloader()
+                $downloader.Updates = $toDownload
+                $downloadResult = $downloader.Download()
+                if ($downloadResult.ResultCode -ne 2) {
+                    Write-Host "Download failed with result code: $($downloadResult.ResultCode)"
+                    exit 1
+                }
+            } else {
+                Write-Host "All matched updates are already downloaded."
+            }
+
+            $toInstall = New-Object -ComObject Microsoft.Update.UpdateColl
+            for ($i = 0; $i -lt $updates.Count; $i++) {
+                $u = $updates.Item($i)
+                if ($u.IsDownloaded) { [void]$toInstall.Add($u) }
+            }
+
+            if ($toInstall.Count -gt 0) {
+                Write-Host "Installing $($toInstall.Count) driver/firmware update(s)..."
+                $installer = $session.CreateUpdateInstaller()
+                $installer.Updates = $toInstall
+                $installResult = $installer.Install()
+                if ($installResult.ResultCode -ne 2) {
+                    Write-Host "Install completed with non-success result code: $($installResult.ResultCode)"
+                    exit 1
+                }
+                if ($installResult.RebootRequired) {
+                    Write-Host "A reboot is required to complete OEM driver/firmware installation."
+                    exit 2
+                }
+            }
+
+            Write-Host "OEM driver/firmware update installation complete."
+            exit 0
+        }
+        catch {
+            Write-Error "OEM driver/firmware update failed: $($_.Exception.Message)"
+            exit 1
+        }
+        '''
+
+        try:
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Device Firmware', timeout=5400)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Device Firmware:Operation timed out after 90 minutes.")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Device Firmware:No updates needed, or updates installed successfully.")
+            elif rc == 2:
+                self.queue.put("PROGRESS:Device Firmware:Updates installed. A reboot is required.")
+            else:
+                self.queue.put("PROGRESS:Device Firmware:Could not complete automatic OEM update install.")
+                self.queue.put("PROGRESS:Device Firmware:Fallback: use your OEM updater app (Dell Command | HP Support Assistant | Lenovo System Update).")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Device Firmware:Error in OEM update process: {str(e)}")
+    def repair_system_files(self):
+        """Repair Windows system files using SFC and DISM"""
+        self.queue.put("PROGRESS:System Repair:Starting Windows system file repair...")
+        self.queue.put("PROGRESS:System Repair:This process may take 30 minutes or more. Please be patient.")
+
+        # Step 1: Run SFC (System File Checker)
+        self.queue.put("PROGRESS:System Repair:=== Running System File Checker (SFC) ===")
+        self.queue.put("PROGRESS:System Repair:Executing: sfc /scannow")
+        self.queue.put("PROGRESS:System Repair:Starting SFC scan...")
+
+        rc, timed_out = self._run_live_command(['sfc', '/scannow'], 'System Repair', timeout=1800)
+        if timed_out:
+            self.queue.put("PROGRESS:System Repair:SFC scan timed out after 30 minutes")
+        elif rc == 0:
+            self.queue.put("PROGRESS:System Repair:SFC scan completed successfully")
+        elif rc == 1:
+            self.queue.put("PROGRESS:System Repair:SFC found and fixed corrupted files")
+        elif rc == 2:
+            self.queue.put("PROGRESS:System Repair:SFC found corrupted files but couldn't fix some")
+        else:
+            self.queue.put(f"PROGRESS:System Repair:SFC completed with return code: {rc}")
+
+        # Step 2: Run DISM (Deployment Image Servicing and Management)
+        self.queue.put("PROGRESS:System Repair:=== Running DISM to repair component store ===")
+        self.queue.put("PROGRESS:System Repair:Executing: DISM /Online /Cleanup-Image /RestoreHealth")
+        self.queue.put("PROGRESS:System Repair:Starting DISM repair...")
+
+        rc, timed_out = self._run_live_command(
+            ['DISM', '/Online', '/Cleanup-Image', '/RestoreHealth'], 'System Repair', timeout=1800)
+        if timed_out:
+            self.queue.put("PROGRESS:System Repair:DISM repair timed out after 30 minutes")
+        elif rc == 0:
+            self.queue.put("PROGRESS:System Repair:DISM repair completed successfully")
+        else:
+            self.queue.put(f"PROGRESS:System Repair:DISM completed with return code: {rc}")
+
+        # Step 3: Run SFC again after DISM
+        self.queue.put("PROGRESS:System Repair:=== Running System File Checker (SFC) again after DISM ===")
+        self.queue.put("PROGRESS:System Repair:Executing: sfc /scannow")
+        self.queue.put("PROGRESS:System Repair:Starting second SFC scan...")
+
+        rc, timed_out = self._run_live_command(['sfc', '/scannow'], 'System Repair', timeout=1800)
+        if timed_out:
+            self.queue.put("PROGRESS:System Repair:Second SFC scan timed out after 30 minutes")
+        elif rc == 0:
+            self.queue.put("PROGRESS:System Repair:Second SFC scan completed successfully")
+        elif rc == 1:
+            self.queue.put("PROGRESS:System Repair:SFC found and fixed corrupted files")
+        elif rc == 2:
+            self.queue.put("PROGRESS:System Repair:SFC found corrupted files but couldn't fix some")
+        else:
+            self.queue.put(f"PROGRESS:System Repair:SFC completed with return code: {rc}")
+
+        self.queue.put("PROGRESS:System Repair:System repair process completed!")
+        self.queue.put("PROGRESS:System Repair:A restart may be required for all changes to take effect.")
+
+    def run_chk_dsk(self):
+        """Schedule CHKDSK to run on next reboot with repair options"""
+        self.queue.put("PROGRESS:CHKDSK:Starting CHKDSK on drive C: with repair options...")
+        self.queue.put("PROGRESS:CHKDSK:Warning: This operation requires a system reboot to complete.")
+
+        try:
+            # First, check if the drive is already marked for checking
+            self.queue.put("PROGRESS:CHKDSK:Checking current disk status...")
+            rc, _ = self._run_live_command(['fsutil', 'dirty', 'query', 'C:'], 'CHKDSK', timeout=30)
+
+            # Schedule CHKDSK to run on next reboot with repair options
+            self.queue.put("PROGRESS:CHKDSK:Scheduling CHKDSK to run on next reboot...")
+            self.queue.put("PROGRESS:CHKDSK:Executing: chkdsk C: /F /R /X")
+
+            rc, timed_out = self._run_live_command(
+                ['chkdsk', 'C:', '/F', '/R', '/X'], 'CHKDSK', timeout=60)
+
+            if timed_out:
+                self.queue.put("PROGRESS:CHKDSK:CHKDSK command timed out")
+            elif rc == 0:
+                self.queue.put("PROGRESS:CHKDSK:CHKDSK successfully scheduled for next reboot")
+                self.queue.put("CHKDSK_SCHEDULED")
+                self.root.after(100, self.prompt_reboot)
+            else:
+                self.queue.put(f"PROGRESS:CHKDSK:CHKDSK scheduling completed with return code: {rc}")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:CHKDSK:Error scheduling CHKDSK: {str(e)}")
+
+    def perform_windows_adjustments(self):
+        """Apply various Windows system adjustments for better performance"""
+        self.queue.put("PROGRESS:Windows Adjustments:Starting Windows adjustments...")
+        self.queue.put(
+            "PROGRESS:Windows Adjustments:This will modify focus, visual effects, gaming, and network settings.")
+
+        try:
+            # Registry modifications with validation
+            adjustments = [
+                {
+                    "name": "Focus Assist",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings\QuietHours",
+                    "values": [("QuietHoursState", 0)]
+                },
+                {
+                    "name": "Transparency Effects",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                    "values": [("EnableTransparency", 0)]
+                },
+                {
+                    "name": "Visual Effects (Best Performance)",
+                    "path": r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
+                    "values": [("VisualFXSetting", 2)]
+                },
+                {
+                    "name": "Game Bar",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR",
+                    "values": [("AppCaptureEnabled", 0), ("BackgroundRecordingEnabled", 0)]
+                },
+                {
+                    "name": "Game Mode",
+                    "path": r"SOFTWARE\Microsoft\GameBar",
+                    "values": [("AllowAutoGameMode", 0), ("AutoGameModeEnabled", 0)]
+                },
+                {
+                    "name": "Game DVR",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR",
+                    "values": [("AllowGameDVR", 0)]
+                },
+                {
+                    "name": "Game Capture",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR",
+                    "values": [("GameCaptureEnabled", 0)]
+                }
+            ]
+
+            for i, adjustment in enumerate(adjustments):
+                try:
+                    self.queue.put(
+                        f"PROGRESS:Windows Adjustments:Processing adjustment {i + 1}/{len(adjustments)}: {adjustment['name']}...")
+
+                    # Validate registry path
+                    SecurityUtils.validate_registry_key(adjustment["path"])
+
+                    # Open or create registry key
+                    try:
+                        key = winreg.OpenKey(
+                            winreg.HKEY_CURRENT_USER,
+                            adjustment["path"],
+                            0,
+                            winreg.KEY_WRITE
+                        )
+                    except FileNotFoundError:
+                        self.queue.put(f"PROGRESS:Windows Adjustments:Registry key not found, creating it...")
+                        key = winreg.CreateKey(
+                            winreg.HKEY_CURRENT_USER,
+                            adjustment["path"]
+                        )
+                    except OSError as e:
+                        if getattr(e, "winerror", None) == 2 or getattr(e, "errno", None) == 2:
+                            self.queue.put(f"PROGRESS:Windows Adjustments:Registry key not found, creating it...")
+                            key = winreg.CreateKey(
+                                winreg.HKEY_CURRENT_USER,
+                                adjustment["path"]
+                            )
+                        else:
+                            raise
+
+                    # Set values
+                    for j, (value_name, value_data) in enumerate(adjustment["values"]):
+                        self.queue.put(
+                            f"PROGRESS:Windows Adjustments:Setting registry value {j + 1}/{len(adjustment['values'])}: {value_name} = {value_data}")
+                        winreg.SetValueEx(key, value_name, 0, winreg.REG_DWORD, value_data)
+
+                    winreg.CloseKey(key)
+                    self.queue.put(f"PROGRESS:Windows Adjustments:{adjustment['name']} disabled")
+
+                except Exception as e:
+                    self.queue.put(f"PROGRESS:Windows Adjustments:Error disabling {adjustment['name']}: {str(e)}")
+
+            # Network adjustment using safe PowerShell
+            self.queue.put("PROGRESS:Windows Adjustments:Changing network to private...")
+            try:
+                ps_script = '''
+                try {
+                    Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
+                    Write-Host "Network category set to Private"
+                } catch {
+                    Write-Host "Error setting network category: $($_.Exception.Message)"
+                }
+                '''
+
+                self.queue.put("PROGRESS:Windows Adjustments:Executing PowerShell network adjustment script...")
+                result = subprocess.run(
+                    ['powershell', '-Command', ps_script],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=60,
+                    creationflags=CREATE_NO_WINDOW  # Hide console window
+                )
+
+                if result.stdout.strip():
+                    self.queue.put("PROGRESS:Windows Adjustments:Network adjustment output:")
+                    for line in result.stdout.strip().split('\n'):
+                        if line.strip():
+                            self.queue.put(f"PROGRESS:Windows Adjustments:  {line.strip()}")
+
+                if result.stderr.strip():
+                    self.queue.put("PROGRESS:Windows Adjustments:Network adjustment errors:")
+                    for line in result.stderr.strip().split('\n'):
+                        if line.strip():
+                            self.queue.put(f"PROGRESS:Windows Adjustments:  {line.strip()}")
+
+            except subprocess.TimeoutExpired:
+                self.queue.put("PROGRESS:Windows Adjustments:Network adjustment timed out")
+            except Exception as e:
+                self.queue.put(f"PROGRESS:Windows Adjustments:Error changing network: {str(e)}")
+
+            self.queue.put("PROGRESS:Windows Adjustments:Windows adjustments completed!")
+            self.queue.put("PROGRESS:Windows Adjustments:Some changes may require a restart or logout to take effect.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Windows Adjustments:Error in Windows adjustments: {str(e)}")
+
+    def flush_dns_and_renew_ip(self):
+        """Flush DNS and renew IP address"""
+        self.queue.put("PROGRESS:Flush DNS and Renew IP:Starting DNS flush and IP renewal...")
+
+        try:
+            all_steps_ok = True
+
+            # Step 1: Release IP
+            self.queue.put("PROGRESS:Flush DNS and Renew IP:Step 1: Releasing IP address...")
+            self.queue.put("PROGRESS:Flush DNS and Renew IP:Executing: ipconfig /release")
+            rc, timed_out = self._run_live_command(['ipconfig', '/release'], 'Flush DNS and Renew IP', timeout=30)
+            if timed_out:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:IP release command timed out")
+                all_steps_ok = False
+            elif rc == 0:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:IP address released successfully")
+            else:
+                self.queue.put(f"PROGRESS:Flush DNS and Renew IP:IP release failed (rc={rc})")
+                all_steps_ok = False
+
+            # Step 2: Renew IP
+            self.queue.put("PROGRESS:Flush DNS and Renew IP:Step 2: Renewing IP address...")
+            self.queue.put("PROGRESS:Flush DNS and Renew IP:Executing: ipconfig /renew")
+            rc, timed_out = self._run_live_command(['ipconfig', '/renew'], 'Flush DNS and Renew IP', timeout=60)
+            if timed_out:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:IP renewal command timed out")
+                all_steps_ok = False
+            elif rc == 0:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:IP address renewed successfully")
+            else:
+                self.queue.put(f"PROGRESS:Flush DNS and Renew IP:IP renewal failed (rc={rc})")
+                all_steps_ok = False
+
+            # Step 3: Flush DNS
+            self.queue.put("PROGRESS:Flush DNS and Renew IP:Step 3: Flushing DNS...")
+            self.queue.put("PROGRESS:Flush DNS and Renew IP:Executing: ipconfig /flushdns")
+            rc, timed_out = self._run_live_command(['ipconfig', '/flushdns'], 'Flush DNS and Renew IP', timeout=30)
+            if timed_out:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:DNS flush command timed out")
+                all_steps_ok = False
+            elif rc == 0:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:DNS flushed successfully")
+            else:
+                self.queue.put(f"PROGRESS:Flush DNS and Renew IP:DNS flush failed (rc={rc})")
+                all_steps_ok = False
+
+            if all_steps_ok:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:DNS flush and IP renewal completed successfully!")
+            else:
+                self.queue.put("PROGRESS:Flush DNS and Renew IP:Completed with warnings/errors. Review log lines above.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Flush DNS and Renew IP:Error in DNS flush and IP renewal: {str(e)}")
+
+    def display_ip_config(self):
+        """Display IP configuration using ipconfig /all"""
+        self.queue.put("PROGRESS:Display IP Configuration:Retrieving IP configuration...")
+
+        try:
+            self.queue.put("PROGRESS:Display IP Configuration:Executing: ipconfig /all")
+            result = subprocess.run(
+                ['ipconfig', '/all'],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+                creationflags=CREATE_NO_WINDOW  # Hide console window
+            )
+
+            self.queue.put("PROGRESS:Display IP Configuration:IP configuration retrieved successfully")
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Display IP Configuration:=== IP Configuration ===")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Display IP Configuration:{line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Display IP Configuration:Errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Display IP Configuration:  {line.strip()}")
+
+            self.queue.put("PROGRESS:Display IP Configuration:IP configuration display completed!")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Display IP Configuration:IP configuration command timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Display IP Configuration:Error displaying IP configuration: {str(e)}")
+
+    def change_dns_servers(self):
+        """Change DNS servers to 1.1.1.1 and 8.8.8.8"""
+        self.queue.put("PROGRESS:Change DNS:Starting DNS server change process...")
+        self.queue.put("PROGRESS:Change DNS:This will change the DNS servers for all active network interfaces.")
+
+        try:
+            # PowerShell script to change DNS servers for all active interfaces
+            ps_script = '''
+            try {
+                $interfaces = Get-NetAdapter | Where-Object {$_.Status -eq "Up"}
+                $changedCount = 0
+
+                foreach ($interface in $interfaces) {
+                    try {
+                        $interfaceName = $interface.Name
+                        Write-Host "Changing DNS for interface: $interfaceName"
+
+                        # Set DNS servers
+                        Set-DnsClientServerAddress -InterfaceAlias $interfaceName -ServerAddresses "1.1.1.1","8.8.8.8" -ErrorAction Stop
+
+                        # Verify the change
+                        $dnsServers = Get-DnsClientServerAddress -InterfaceAlias $interfaceName -AddressFamily IPv4 -ErrorAction SilentlyContinue
+                        if ($dnsServers.ServerAddresses -contains "1.1.1.1" -and $dnsServers.ServerAddresses -contains "8.8.8.8") {
+                            Write-Host "DNS successfully changed for $interfaceName"
+                            $changedCount++
+                        } else {
+                            Write-Host "Warning: DNS change may not have been applied correctly for $interfaceName"
+                        }
+                    } catch {
+                        Write-Host "Error changing DNS for $($interface.Name): $($_.Exception.Message)"
+                    }
+                }
+
+                if ($changedCount -gt 0) {
+                    Write-Host "DNS servers changed successfully for $changedCount interface(s)"
+                    Write-Host "Primary DNS: 1.1.1.1 (Cloudflare)"
+                    Write-Host "Secondary DNS: 8.8.8.8 (Google)"
+                } else {
+                    Write-Host "No active network interfaces found or DNS could not be changed"
+                }
+            } catch {
+                Write-Error "Error changing DNS servers: $($_.Exception.Message)"
+            }
+            '''
+
+            self.queue.put("PROGRESS:Change DNS:Executing PowerShell DNS change script...")
+            result = subprocess.run(
+                ['powershell', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                creationflags=CREATE_NO_WINDOW  # Hide console window
+            )
+
+            self.queue.put("PROGRESS:Change DNS:DNS change process completed")
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Change DNS:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Change DNS:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Change DNS:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Change DNS:  {line.strip()}")
+
+            self.queue.put("PROGRESS:Change DNS:DNS server change process completed!")
+            self.queue.put(
+                "PROGRESS:Change DNS:Note: You may need to restart your browser or applications for changes to take effect.")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Change DNS:DNS change process timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Change DNS:Error changing DNS servers: {str(e)}")
+
+    def create_autopilot_csv(self):
+        """Create AutoPilot CSV for Windows deployment"""
+        self.queue.put("PROGRESS:AutoPilot CSV:Starting AutoPilot CSV creation...")
+        self.queue.put("PROGRESS:AutoPilot CSV:This process may take several minutes. Please be patient.")
+
+        try:
+            # Step 1: Create PowerShell folder safely
+            self.queue.put("PROGRESS:AutoPilot CSV:Step 1: Creating PowerShell folder on C: drive...")
+
+            try:
+                powershell_folder = SecurityUtils.sanitize_path("C:\\PowerShell")
+
+                if not os.path.exists(powershell_folder):
+                    os.makedirs(powershell_folder)
+                    self.queue.put(f"PROGRESS:AutoPilot CSV:Created folder: {powershell_folder}")
+                else:
+                    self.queue.put(f"PROGRESS:AutoPilot CSV:Folder already exists: {powershell_folder}")
+
+            except Exception as e:
+                self.queue.put(f"PROGRESS:AutoPilot CSV:Error creating folder: {str(e)}")
+                return
+
+            # Step 2: Create a secure script for autopilot info
+            self.queue.put("PROGRESS:AutoPilot CSV:Step 2: Creating AutoPilot script...")
+            try:
+                script_content = '''
+# Secure AutoPilot Info Script
+function Get-AutoPilotInfo {
+    param(
+        [string]$OutputFile = "AutoPilot.csv"
+    )
+
+    try {
+        # Get device serial number
+        $serialNumber = (Get-WmiObject -Class Win32_BIOS).SerialNumber
+
+        # Get hardware hash
+        $hardwareHash = ""
+        try {
+            $devDetail = Get-WmiObject -Namespace root/cimv2/mdm/dmmap -Class MDM_DevDetail_Ext01 -Filter "InstanceID='Ext'"
+            if ($devDetail) {
+                $hardwareHash = $devDetail.DeviceHardwareData
+            }
+        } catch {
+            Write-Warning "Could not retrieve hardware hash"
+        }
+
+        # Create CSV content
+        $csvHeader = "Device Serial Number,Windows Product ID,Hardware Hash"
+        $csvData = "$serialNumber,,$hardwareHash"
+
+        # Write to file
+        $csvContent = $csvHeader + "`r`n" + $csvData
+        $csvContent | Out-File -FilePath $OutputFile -Encoding UTF8
+
+        Write-Host "AutoPilot CSV created: $OutputFile"
+        Write-Host "Serial Number: $serialNumber"
+        Write-Host "Hardware Hash Length: $($hardwareHash.Length)"
+
+    } catch {
+        Write-Error "Error creating AutoPilot CSV: $($_.Exception.Message)"
+    }
+}
+
+# Run the function
+Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
+'''
+
+                script_path = os.path.join(powershell_folder, "Get-AutoPilotInfo.ps1")
+                with open(script_path, 'w', encoding='utf-8') as f:
+                    f.write(script_content)
+
+                self.queue.put(f"PROGRESS:AutoPilot CSV:Script created at: {script_path}")
+
+                # Step 3: Run the script safely
+                self.queue.put("PROGRESS:AutoPilot CSV:Step 3: Running AutoPilot script...")
+
+                result = subprocess.run(
+                    ['powershell', '-ExecutionPolicy', 'Bypass', '-File', script_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minute timeout
+                    creationflags=CREATE_NO_WINDOW  # Hide console window
+                )
+
+                if result.stdout.strip():
+                    self.queue.put("PROGRESS:AutoPilot CSV:Script output:")
+                    for line in result.stdout.strip().split('\n'):
+                        if line.strip():
+                            self.queue.put(f"PROGRESS:AutoPilot CSV:  {line.strip()}")
+
+                if result.stderr.strip():
+                    self.queue.put("PROGRESS:AutoPilot CSV:Script errors:")
+                    for line in result.stderr.strip().split('\n'):
+                        if line.strip():
+                            self.queue.put(f"PROGRESS:AutoPilot CSV:  {line.strip()}")
+
+                # Check if CSV was created
+                output_file = os.path.join(powershell_folder, "AutoPilot.csv")
+                if os.path.exists(output_file):
+                    self.queue.put(f"PROGRESS:AutoPilot CSV:AutoPilot CSV created successfully: {output_file}")
+
+                    # Verify content
+                    try:
+                        with open(output_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        if content.strip():
+                            self.queue.put("PROGRESS:AutoPilot CSV:CSV file contains data")
+                            self.queue.put("PROGRESS:AutoPilot CSV:File size: {len(content)} bytes")
+                        else:
+                            self.queue.put("PROGRESS:AutoPilot CSV:Warning: CSV file is empty")
+                    except Exception as e:
+                        self.queue.put(f"PROGRESS:AutoPilot CSV:Error reading CSV: {str(e)}")
+                else:
+                    self.queue.put("PROGRESS:AutoPilot CSV:Warning: CSV file was not created")
+
+            except subprocess.TimeoutExpired:
+                self.queue.put("PROGRESS:AutoPilot CSV:AutoPilot script timed out")
+            except Exception as e:
+                self.queue.put(f"PROGRESS:AutoPilot CSV:Error running script: {str(e)}")
+
+            self.queue.put("PROGRESS:AutoPilot CSV:AutoPilot CSV creation process completed!")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:AutoPilot CSV:Error in AutoPilot CSV creation: {str(e)}")
+
+    # ==================== APP SETTINGS METHODS ====================
+
+    def stop_background_apps(self):
+        """Stop background applications from running"""
+        self.queue.put("PROGRESS:Stop Background Apps:Stopping background apps...")
+        try:
+            # Safe PowerShell script to disable background apps
+            ps_script = '''
+            try {
+                # Disable background apps globally
+                $registryPath = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
+
+                # Create registry path if it doesn't exist
+                if (-not (Test-Path "HKCU:\\$registryPath")) {
+                    New-Item -Path "HKCU:\\$registryPath" -Force | Out-Null
+                }
+
+                # Set global disable flag
+                Set-ItemProperty -Path "HKCU:\\$registryPath" -Name "GlobalUserDisabled" -Value 1 -Type DWORD -Force
+
+                Write-Host "Background apps disabled successfully"
+            } catch {
+                Write-Error "Error disabling background apps: $($_.Exception.Message)"
+            }
+            '''
+
+            self.queue.put("PROGRESS:Stop Background Apps:Executing PowerShell script...")
+            result = subprocess.run(
+                ['powershell', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                creationflags=CREATE_NO_WINDOW  # Hide console window
+            )
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Stop Background Apps:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Stop Background Apps:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Stop Background Apps:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Stop Background Apps:  {line.strip()}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Stop Background Apps:Background apps operation timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Stop Background Apps:Error stopping background apps: {str(e)}")
+
+    def disable_startup_apps(self):
+        """Disable startup applications except OneDrive using StartupApproved entries"""
+        self.queue.put("PROGRESS:Disable Startup Apps:Disabling startup apps (except OneDrive)...")
+        try:
+            # Uses StartupApproved (Task Manager-compatible) and covers Run keys + Startup folders
+            ps_script = '''
+            try {
+                $ErrorActionPreference = "Stop"
+                $disabledCount = 0
+
+                function Disable-StartupApprovedValue {
+                    param(
+                        [string]$ApprovedPath,
+                        [string]$ItemName,
+                        [byte[]]$DisabledValue
+                    )
+
+                    if ([string]::IsNullOrWhiteSpace($ItemName)) { return $false }
+                    if ($ItemName -like "*OneDrive*") {
+                        Write-Host "Skipped OneDrive: $ItemName"
+                        return $false
+                    }
+
+                    if (-not (Test-Path $ApprovedPath)) {
+                        New-Item -Path $ApprovedPath -Force | Out-Null
+                    }
+
+                    Set-ItemProperty -Path $ApprovedPath -Name $ItemName -Value $DisabledValue -Type Binary -Force
+                    Write-Host "Disabled startup item: $ItemName"
+                    return $true
+                }
+
+                # StartupApproved value format: first byte 0x03 = disabled
+                $disabledValue = [byte[]](0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+
+                # Disable startup items from Run keys (user + machine + 32-bit machine)
+                $runLocations = @(
+                    @{ RunPath = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"; ApprovedPath = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run" },
+                    @{ RunPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"; ApprovedPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run" },
+                    @{ RunPath = "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run"; ApprovedPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run32" }
+                )
+
+                foreach ($location in $runLocations) {
+                    if (Test-Path $location.RunPath) {
+                        $runItems = Get-ItemProperty -Path $location.RunPath
+                        foreach ($prop in $runItems.PSObject.Properties) {
+                            if ($prop.Name -notlike "PS*") {
+                                try {
+                                    if (Disable-StartupApprovedValue -ApprovedPath $location.ApprovedPath -ItemName $prop.Name -DisabledValue $disabledValue) {
+                                        $disabledCount++
+                                    }
+                                } catch {
+                                    Write-Warning "Could not disable: $($prop.Name) from $($location.RunPath) - $($_.Exception.Message)"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                # Disable startup items from Startup folders (current user + all users)
+                $startupFolderTargets = @(
+                    @{ FolderPath = [Environment]::GetFolderPath('Startup'); ApprovedPath = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\StartupFolder" },
+                    @{ FolderPath = "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp"; ApprovedPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\StartupFolder" }
+                )
+
+                foreach ($target in $startupFolderTargets) {
+                    if (Test-Path $target.FolderPath) {
+                        Get-ChildItem -Path $target.FolderPath -File -ErrorAction SilentlyContinue | ForEach-Object {
+                            $itemName = $_.Name
+                            try {
+                                if (Disable-StartupApprovedValue -ApprovedPath $target.ApprovedPath -ItemName $itemName -DisabledValue $disabledValue) {
+                                    $disabledCount++
+                                }
+                            } catch {
+                                Write-Warning "Could not disable startup folder item: $itemName - $($_.Exception.Message)"
+                            }
+                        }
+                    }
+                }
+
+                Write-Host "Startup apps disabled successfully (entries preserved, can be re-enabled)"
+                Write-Host "Total disabled items: $disabledCount"
+
+            } catch {
+                Write-Error "Error disabling startup apps: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Disable Startup Apps:Executing PowerShell script...")
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+                creationflags=CREATE_NO_WINDOW  # Hide console window
+            )
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Disable Startup Apps:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Disable Startup Apps:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Disable Startup Apps:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Disable Startup Apps:  {line.strip()}")
+
+            if result.returncode != 0:
+                self.queue.put(f"PROGRESS:Disable Startup Apps:Script exited with code {result.returncode}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Disable Startup Apps:Startup apps operation timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Disable Startup Apps:Error disabling startup apps: {str(e)}")
+
+    def run_oo_shutup10(self):
+        """Download and run O&O ShutUp10 privacy tool"""
+        self.queue.put("PROGRESS:O&O ShutUp10:Starting O&O ShutUp10 download...")
+        try:
+            import tempfile
+
+            # Download using PowerShell to avoid SSL certificate issues
+            temp_dir = tempfile.gettempdir()
+            exe_path = os.path.join(temp_dir, "OOSU10.exe")
+            download_url = "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe"
+
+            self.queue.put("PROGRESS:O&O ShutUp10:Downloading from official O&O Software site...")
+
+            # Use PowerShell to download (bypasses Python SSL issues)
+            ps_script = f'''
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            $ProgressPreference = 'SilentlyContinue'
+            try {{
+                Invoke-WebRequest -Uri '{download_url}' -OutFile '{exe_path}' -UseBasicParsing
+                Write-Host "Download successful"
+            }} catch {{
+                Write-Error "Download failed: $($_.Exception.Message)"
+                exit 1
+            }}
+            '''
+
+            result = subprocess.run(
+                ['powershell', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            if result.returncode != 0 or not os.path.exists(exe_path):
+                self.queue.put(f"PROGRESS:O&O ShutUp10:Download failed: {result.stderr.strip()}")
+                return
+
+            self.queue.put("PROGRESS:O&O ShutUp10:Download complete. Launching O&O ShutUp10...")
+
+            # Run the executable (without CREATE_NO_WINDOW so user can see the GUI)
+            subprocess.Popen([exe_path])
+
+            self.queue.put("PROGRESS:O&O ShutUp10:O&O ShutUp10 launched successfully!")
+            self.queue.put(
+                "PROGRESS:O&O ShutUp10:Note: Apply your preferred privacy settings in the O&O ShutUp10 window.")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:O&O ShutUp10:Error running O&O ShutUp10: {str(e)}")
+
+    def apply_edge_performance_adjustments(self):
+        """Disable Edge startup boost, background apps, and change search engine to Google"""
+        self.queue.put("PROGRESS:Edge Performance:Applying Edge performance adjustments...")
+        try:
+            ps_script = '''
+            try {
+                $ErrorActionPreference = "Stop"
+                $edgePolicyPath = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Edge"
+
+                # Create Edge policy path if it doesn't exist
+                if (-not (Test-Path $edgePolicyPath)) {
+                    New-Item -Path $edgePolicyPath -Force | Out-Null
+                    Write-Host "Created Edge policy registry path"
+                }
+
+                # Disable Startup Boost
+                Set-ItemProperty -Path $edgePolicyPath -Name "StartupBoostEnabled" -Value 0 -Type DWord -Force
+                Write-Host "Disabled Edge Startup Boost"
+
+                # Disable Background Mode (continue running background extensions and apps when Edge is closed)
+                Set-ItemProperty -Path $edgePolicyPath -Name "BackgroundModeEnabled" -Value 0 -Type DWord -Force
+                Write-Host "Disabled Edge Background Mode"
+
+                # Set default search provider via policy (strong compatibility set)
+                function Set-GoogleSearchPolicy {
+                    param([Parameter(Mandatory = $true)][string]$PolicyPath)
+
+                    if (-not (Test-Path $PolicyPath)) {
+                        New-Item -Path $PolicyPath -Force | Out-Null
+                    }
+
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderEnabled" -Value 1 -Type DWord -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderName" -Value "Google" -Type String -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderKeyword" -Value "google.com" -Type String -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderSearchURL" -Value "https://www.google.com/search?q={searchTerms}" -Type String -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderSuggestURL" -Value "https://www.google.com/complete/search?output=chrome&q={searchTerms}" -Type String -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderImageURL" -Value "https://www.google.com/favicon.ico" -Type String -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderSearchURLPostParams" -Value "" -Type String -Force
+                    Set-ItemProperty -Path $PolicyPath -Name "DefaultSearchProviderSuggestURLPostParams" -Value "" -Type String -Force
+
+                    # Verify critical policy values were actually written
+                    $verify = Get-ItemProperty -Path $PolicyPath -ErrorAction Stop
+                    if (($verify.DefaultSearchProviderEnabled -ne 1) -or
+                        ($verify.DefaultSearchProviderName -ne "Google") -or
+                        ($verify.DefaultSearchProviderKeyword -ne "google.com")) {
+                        throw "Search policy verification failed at $PolicyPath"
+                    }
+                }
+
+                # Write both user and machine policy paths for maximum reliability
+                $edgePolicyPathUser = "HKCU:\SOFTWARE\Policies\Microsoft\Edge"
+                $edgePolicyPathMachine = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+
+                Set-GoogleSearchPolicy -PolicyPath $edgePolicyPathUser
+                Write-Host "Set Google search policy (HKCU)"
+
+                try {
+                    Set-GoogleSearchPolicy -PolicyPath $edgePolicyPathMachine
+                    Write-Host "Set Google search policy (HKLM)"
+                } catch {
+                    Write-Host "Could not set HKLM policy (likely non-admin or restricted): $($_.Exception.Message)"
+                }
+
+                # Keep using user policy path for remaining user-targeted adjustments
+                $edgePolicyPath = $edgePolicyPathUser
+                Write-Host "Set default search engine policy to Google"
+
+                # New tab page / page settings adjustments (best-effort)
+                # Policy-backed where available
+                Set-ItemProperty -Path $edgePolicyPath -Name "NewTabPageQuickLinksEnabled" -Value 1 -Type DWord -Force
+                Set-ItemProperty -Path $edgePolicyPath -Name "NewTabPageContentEnabled" -Value 0 -Type DWord -Force
+                Set-ItemProperty -Path $edgePolicyPath -Name "NewTabPageHideDefaultTopSites" -Value 1 -Type DWord -Force
+                Write-Host "Applied Edge policy settings for new tab page"
+
+                function Set-JsonPathValue {
+                    param(
+                        [Parameter(Mandatory = $true)]$Root,
+                        [Parameter(Mandatory = $true)][string[]]$Path,
+                        [Parameter(Mandatory = $true)]$Value
+                    )
+
+                    $node = $Root
+                    for ($i = 0; $i -lt $Path.Count - 1; $i++) {
+                        $segment = $Path[$i]
+                        $existing = $node.PSObject.Properties[$segment]
+                        if (-not $existing -or $null -eq $existing.Value) {
+                            $newObj = [pscustomobject]@{}
+                            $node | Add-Member -MemberType NoteProperty -Name $segment -Value $newObj -Force
+                            $node = $newObj
+                        } else {
+                            $node = $existing.Value
+                        }
+                    }
+                    $leaf = $Path[$Path.Count - 1]
+                    $node | Add-Member -MemberType NoteProperty -Name $leaf -Value $Value -Force
+                }
+
+                # Profile preferences for exact UX options requested (best-effort across profile folders)
+                $userDataPath = "$env:LOCALAPPDATA\\Microsoft\\Edge\\User Data"
+                if (Test-Path $userDataPath) {
+                    $profileDirs = Get-ChildItem -Path $userDataPath -Directory -ErrorAction SilentlyContinue |
+                                  Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' }
+
+                    foreach ($profileDir in $profileDirs) {
+                        $prefsPath = Join-Path $profileDir.FullName "Preferences"
+                        if (-not (Test-Path $prefsPath)) { continue }
+
+                        try {
+                            $prefsRaw = Get-Content -Path $prefsPath -Raw -ErrorAction Stop
+                            if ([string]::IsNullOrWhiteSpace($prefsRaw)) { continue }
+                            $prefsObj = $prefsRaw | ConvertFrom-Json -ErrorAction Stop
+
+                            # Quick links = 2 rows
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'numRowsOfQuickLinks') -Value 2
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'quickLinksRows') -Value 2
+
+                            # Sponsored links OFF
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'showSponsoredLinks') -Value $false
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'showSponsoredQuickLinks') -Value $false
+
+                            # Open row in new tab OFF
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'openLinksInNewTab') -Value $false
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'quickLinksOpenInNewTab') -Value $false
+
+                            # Show content OFF
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'showContent') -Value $false
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'contentEnabled') -Value $false
+
+                            # Show widgets OFF
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'showWidgets') -Value $false
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'widgetsEnabled') -Value $false
+
+                            # Show feed OFF
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'showFeed') -Value $false
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'feedEnabled') -Value $false
+                            Set-JsonPathValue -Root $prefsObj -Path @('ntp', 'articleFeedEnabled') -Value $false
+
+                            $prefsObj | ConvertTo-Json -Depth 100 | Set-Content -Path $prefsPath -Encoding UTF8 -ErrorAction Stop
+                            Write-Host "Applied page settings in profile: $($profileDir.Name)"
+                        } catch {
+                            Write-Host "Could not update profile preferences ($($profileDir.Name)): $($_.Exception.Message)"
+                        }
+                    }
+                }
+
+                Write-Host "Edge performance adjustments applied successfully!"
+                Write-Host "Note: Restart Edge for changes to take effect."
+
+            } catch {
+                Write-Error "Error applying Edge adjustments: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Edge Performance:Executing Edge optimization script...")
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Edge Performance:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Edge Performance:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Edge Performance:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Edge Performance:  {line.strip()}")
+
+            if result.returncode != 0:
+                self.queue.put(f"PROGRESS:Edge Performance:Script exited with code {result.returncode}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Edge Performance:Edge adjustments operation timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Edge Performance:Error applying Edge adjustments: {str(e)}")
+
+    def disable_all_gaming_features(self):
+        """Turn off all Windows gaming features: Game Bar, Game DVR, Game Mode, and captures"""
+        self.queue.put("PROGRESS:Gaming Features:Disabling all Windows gaming features...")
+        try:
+            ps_script = '''
+            try {
+                $ErrorActionPreference = "Stop"
+                Write-Host "=== Disabling Windows Gaming Features ==="
+
+                # Disable Game Bar
+                Write-Host "Disabling Game Bar..."
+                $gamingPath = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+                if (-not (Test-Path $gamingPath)) { New-Item -Path $gamingPath -Force | Out-Null }
+                Set-ItemProperty -Path $gamingPath -Name "AppCaptureEnabled" -Value 0 -Type DWord -Force
+                Write-Host "  - Game Bar capture disabled"
+
+                $gameBarPath = "HKCU:\\Software\\Microsoft\\GameBar"
+                if (-not (Test-Path $gameBarPath)) { New-Item -Path $gameBarPath -Force | Out-Null }
+                Set-ItemProperty -Path $gameBarPath -Name "UseNexusForGameBarEnabled" -Value 0 -Type DWord -Force
+                Set-ItemProperty -Path $gameBarPath -Name "AutoGameModeEnabled" -Value 0 -Type DWord -Force
+                Write-Host "  - Game Bar overlay disabled"
+
+                # Disable Game DVR
+                Write-Host "Disabling Game DVR..."
+                $gameDVRPolicy = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR"
+                if (-not (Test-Path $gameDVRPolicy)) { New-Item -Path $gameDVRPolicy -Force | Out-Null }
+                Set-ItemProperty -Path $gameDVRPolicy -Name "AllowGameDVR" -Value 0 -Type DWord -Force
+                $gameDVRPolicyUser = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR"
+                if (-not (Test-Path $gameDVRPolicyUser)) { New-Item -Path $gameDVRPolicyUser -Force | Out-Null }
+                Set-ItemProperty -Path $gameDVRPolicyUser -Name "AllowGameDVR" -Value 0 -Type DWord -Force
+                Write-Host "  - Game DVR recording disabled"
+
+                # Disable Game Mode
+                Write-Host "Disabling Game Mode..."
+                $gameModePath = "HKCU:\\Software\\Microsoft\\GameBar"
+                Set-ItemProperty -Path $gameModePath -Name "AllowAutoGameMode" -Value 0 -Type DWord -Force
+                Write-Host "  - Auto Game Mode disabled"
+
+                $gameConfigPath = "HKCU:\\System\\GameConfigStore"
+                if (-not (Test-Path $gameConfigPath)) { New-Item -Path $gameConfigPath -Force | Out-Null }
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_Enabled" -Value 0 -Type DWord -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_FSEBehaviorMode" -Value 2 -Type DWord -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_HonorUserFSEBehaviorMode" -Value 1 -Type DWord -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Value 1 -Type DWord -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_EFSEFeatureFlags" -Value 0 -Type DWord -Force
+                Write-Host "  - Game optimizations disabled"
+
+                # Disable Game Capture features
+                Write-Host "Disabling Game Capture..."
+                Set-ItemProperty -Path $gamingPath -Name "HistoricalCaptureEnabled" -Value 0 -Type DWord -Force
+                Write-Host "  - Background recording disabled"
+
+                # Disable "Use Game Bar for supported controllers" (Guide button)
+                Write-Host "Disabling Game Bar controller guide button..."
+                Set-ItemProperty -Path $gameBarPath -Name "ShowStartupPanel" -Value 0 -Type DWord -Force
+                Set-ItemProperty -Path $gameBarPath -Name "GamePanelStartupTipIndex" -Value 3 -Type DWord -Force
+                Write-Host "  - Game Bar guide button disabled"
+
+                # Disable optimizations for windowed games
+                Write-Host "Disabling optimizations for windowed games..."
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_DSEBehavior" -Value 2 -Type DWord -Force
+                $graphicsPath = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+                if (-not (Test-Path $graphicsPath)) { New-Item -Path $graphicsPath -Force | Out-Null }
+                $fullscreenOptPath = "HKCU:\\System\\GameConfigStore"
+                Set-ItemProperty -Path $fullscreenOptPath -Name "GameDVR_FSEBehavior" -Value 2 -Type DWord -Force
+                Write-Host "  - Windowed games optimizations disabled"
+
+                # Disable Xbox Game Monitoring
+                Write-Host "Disabling Xbox Game Monitoring..."
+                $xboxPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\xbgm"
+                if (Test-Path $xboxPath) {
+                    Set-ItemProperty -Path $xboxPath -Name "Start" -Value 4 -Type DWord -Force
+                    Write-Host "  - Xbox Game Monitoring service disabled"
+                }
+
+                Write-Host ""
+                Write-Host "=== All gaming features have been disabled! ==="
+                Write-Host "Disabled: Game Bar, Game DVR, Game Mode, Background Recording,"
+                Write-Host "          Controller Guide Button, Windowed Games Optimizations"
+                Write-Host "Note: Some changes may require a restart to take effect."
+
+            } catch {
+                Write-Error "Error disabling gaming features: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Gaming Features:Executing gaming features disable script...")
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Gaming Features:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Gaming Features:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Gaming Features:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Gaming Features:  {line.strip()}")
+
+            if result.returncode != 0:
+                self.queue.put(f"PROGRESS:Gaming Features:Script exited with code {result.returncode}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Gaming Features:Operation timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Gaming Features:Error disabling gaming features: {str(e)}")
+
+    def enable_all_gaming_features(self):
+        """Turn on gaming features and apply high-performance graphics preferences for detected games."""
+        self.queue.put("PROGRESS:Gaming Features:Enabling all Windows gaming features...")
+        try:
+            ps_script = r'''
+            try {
+                $ErrorActionPreference = "Stop"
+                Write-Host "=== Enabling Windows Gaming Features ==="
+
+                # Core paths
+                $gameBarPath = "HKCU:\Software\Microsoft\GameBar"
+                $gameDvrPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR"
+                $gameConfigPath = "HKCU:\System\GameConfigStore"
+                $gpuPrefsPath = "HKCU:\Software\Microsoft\DirectX\UserGpuPreferences"
+
+                foreach ($p in @($gameBarPath, $gameDvrPath, $gameConfigPath, $gpuPrefsPath)) {
+                    if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
+                }
+
+                # Turn ON Game Bar + Guide button behavior
+                Write-Host "Enabling Game Bar..."
+                Set-ItemProperty -Path $gameBarPath -Name "UseNexusForGameBarEnabled" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameBarPath -Name "ShowStartupPanel" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameBarPath -Name "GamePanelStartupTipIndex" -Type DWord -Value 0 -Force
+                Set-ItemProperty -Path $gameBarPath -Name "AutoGameModeEnabled" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameBarPath -Name "AllowAutoGameMode" -Type DWord -Value 1 -Force
+                Write-Host "  - Game Bar enabled"
+
+                # Turn ON Game DVR + captures (user & policy)
+                Write-Host "Enabling Game DVR..."
+                Set-ItemProperty -Path $gameDvrPath -Name "AppCaptureEnabled" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameDvrPath -Name "HistoricalCaptureEnabled" -Type DWord -Value 1 -Force
+
+                $gameDvrPolicyMachine = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR"
+                $gameDvrPolicyUser = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\GameDVR"
+                if (-not (Test-Path $gameDvrPolicyMachine)) { New-Item -Path $gameDvrPolicyMachine -Force | Out-Null }
+                if (-not (Test-Path $gameDvrPolicyUser)) { New-Item -Path $gameDvrPolicyUser -Force | Out-Null }
+                Set-ItemProperty -Path $gameDvrPolicyMachine -Name "AllowGameDVR" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameDvrPolicyUser -Name "AllowGameDVR" -Type DWord -Value 1 -Force
+                Write-Host "  - Game DVR policy enabled"
+
+                # Turn ON Game Mode + windowed optimizations
+                Write-Host "Enabling Game Mode and windowed game optimizations..."
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_Enabled" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_DSEBehavior" -Type DWord -Value 0 -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_FSEBehavior" -Type DWord -Value 0 -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_FSEBehaviorMode" -Type DWord -Value 2 -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_HonorUserFSEBehaviorMode" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 1 -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "GameDVR_EFSEFeatureFlags" -Type DWord -Value 1 -Force
+                Write-Host "  - Game Mode and windowed optimizations enabled"
+
+                # Enable HAGS (Hardware-accelerated GPU scheduling)
+                Write-Host "Enabling Hardware-Accelerated GPU Scheduling..."
+                $graphicsDriversPath = "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"
+                if (-not (Test-Path $graphicsDriversPath)) { New-Item -Path $graphicsDriversPath -Force | Out-Null }
+                Set-ItemProperty -Path $graphicsDriversPath -Name "HwSchMode" -Type DWord -Value 2 -Force
+                Write-Host "  - HAGS enabled (restart may be required)"
+
+                # Enable VRR + Windowed optimization global switches
+                Write-Host "Enabling VRR and global graphics optimization flags..."
+                $globalSettings = ""
+                try { $globalSettings = (Get-ItemProperty -Path $gpuPrefsPath -Name "DirectXUserGlobalSettings" -ErrorAction Stop).DirectXUserGlobalSettings } catch {}
+                $settingsMap = @{}
+                if ($globalSettings) {
+                    foreach ($token in ($globalSettings -split ';')) {
+                        if ($token -match '=') {
+                            $kv = $token -split '=', 2
+                            if ($kv.Count -eq 2) { $settingsMap[$kv[0]] = $kv[1] }
+                        }
+                    }
+                }
+                $settingsMap["SwapEffectUpgradeEnable"] = "1"
+                $settingsMap["VRROptimizeEnable"] = "1"
+                $settingsMap["VariableRefreshRateEnable"] = "1"
+                $newGlobal = (($settingsMap.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ';') + ';'
+                Set-ItemProperty -Path $gpuPrefsPath -Name "DirectXUserGlobalSettings" -Value $newGlobal -Type String -Force
+                Set-ItemProperty -Path $gameConfigPath -Name "VRROptimizeEnable" -Type DWord -Value 1 -Force
+                Write-Host "  - VRR enabled"
+
+                # Add detected game executables to Graphics custom app list (High Performance)
+                Write-Host "Detecting game executables and applying high-performance GPU preference..."
+                $gameRoots = New-Object System.Collections.Generic.List[string]
+                $relPaths = @(
+                    "Program Files (x86)\Steam\steamapps\common",
+                    "SteamLibrary\steamapps\common",
+                    "Program Files\Epic Games",
+                    "Epic Games",
+                    "GOG Games",
+                    "Games",
+                    "XboxGames",
+                    "Program Files\Ubisoft",
+                    "Program Files (x86)\Ubisoft"
+                )
+                $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\' }
+                foreach ($d in $drives) {
+                    foreach ($rel in $relPaths) {
+                        $candidate = Join-Path $d.Root $rel
+                        if (Test-Path $candidate) { $gameRoots.Add($candidate) | Out-Null }
+                    }
+                }
+
+                $excludeRegex = "(?i)(\\_CommonRedist\\|\\Redist\\|\\Installer\\|\\CrashReport\\|EasyAntiCheat|BattlEye|vcredist|unins)"
+                $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+                $added = 0
+                foreach ($root in $gameRoots) {
+                    Get-ChildItem -Path $root -Recurse -Filter *.exe -File -ErrorAction SilentlyContinue | ForEach-Object {
+                        $exe = $_.FullName
+                        if ($exe -notmatch $excludeRegex) {
+                            if ($seen.Add($exe)) {
+                                New-ItemProperty -Path $gpuPrefsPath -Name $exe -Value "GpuPreference=2;" -PropertyType String -Force | Out-Null
+                                $added++
+                            }
+                        }
+                    }
+                }
+                Write-Host ("  - Added/updated GPU preference for " + $added + " game executables")
+
+                Write-Host ""
+                Write-Host "=== Gaming features enabled successfully ==="
+                Write-Host "Enabled: Game Bar, Guide button, Game Mode, windowed game optimizations, HAGS, VRR"
+                Write-Host "Note: Some settings require sign-out/restart to fully apply."
+            } catch {
+                Write-Error ("Error enabling gaming features: " + $_.Exception.Message)
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Gaming Features:Executing gaming features enable script...")
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=300,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Gaming Features:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Gaming Features:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Gaming Features:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Gaming Features:  {line.strip()}")
+
+            if result.returncode != 0:
+                self.queue.put(f"PROGRESS:Gaming Features:Script exited with code {result.returncode}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Gaming Features:Enable operation timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Gaming Features:Error enabling gaming features: {str(e)}")
+
+    def optimize_virtual_memory(self):
+        """Set virtual memory (page file) to optimal size based on installed RAM"""
+        self.queue.put("PROGRESS:Virtual Memory:Analyzing system RAM and optimizing virtual memory...")
+        try:
+            ps_script = '''
+            try {
+                $ErrorActionPreference = "Stop"
+
+                # Prefer summing physical memory modules for accuracy; fallback to ComputerSystem
+                $ramModules = Get-CimInstance -ClassName Win32_PhysicalMemory -ErrorAction SilentlyContinue
+                if ($ramModules) {
+                    $ramBytes = ($ramModules | Measure-Object -Property Capacity -Sum).Sum
+                }
+                if (-not $ramBytes -or $ramBytes -le 0) {
+                    $computerInfo = Get-CimInstance -ClassName Win32_ComputerSystem
+                    $ramBytes = $computerInfo.TotalPhysicalMemory
+                }
+                if (-not $ramBytes -or $ramBytes -le 0) {
+                    throw "Unable to detect installed RAM."
+                }
+
+                # Keep minimum at least installed RAM by rounding up to MB
+                $ramGB = [math]::Round($ramBytes / 1GB, 2)
+                $ramMB = [int][math]::Ceiling($ramBytes / 1MB)
+
+                # Enforce requested formula exactly
+                $initialSizeMB = $ramMB
+                $maxSizeMB = $ramMB * 2
+
+                Write-Host "=== System Memory Analysis ==="
+                Write-Host "Detected RAM: $ramGB GB ($ramMB MB)"
+
+                Write-Host ""
+                Write-Host "=== Virtual Memory Target ==="
+                Write-Host "Initial Size (Minimum): $initialSizeMB MB"
+                Write-Host "Maximum Size: $maxSizeMB MB"
+                Write-Host "Formula: Initial = RAM, Maximum = 2x RAM"
+
+                # Get current page file info
+                Write-Host ""
+                Write-Host "=== Current Configuration ==="
+                $currentPF = Get-CimInstance -ClassName Win32_PageFileUsage -ErrorAction SilentlyContinue
+                if ($currentPF) {
+                    Write-Host "Current page file: $($currentPF.Name)"
+                    Write-Host "Current size: $($currentPF.AllocatedBaseSize) MB"
+                } else {
+                    Write-Host "No active fixed page file detected (likely system managed)"
+                }
+
+                Write-Host ""
+                Write-Host "=== Applying Custom Settings ==="
+
+                # Step 1: Disable automatic management
+                $cs = Get-CimInstance -ClassName Win32_ComputerSystem
+                if ($cs.AutomaticManagedPagefile -eq $true) {
+                    Set-CimInstance -InputObject $cs -Property @{ AutomaticManagedPagefile = $false } | Out-Null
+                    Write-Host "Disabled automatic page file management"
+                } else {
+                    Write-Host "Automatic management already disabled"
+                }
+
+                # Step 2: Set custom page file via registry (most reliable method)
+                $regPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+
+                # Format: "C:\\pagefile.sys InitialSize MaxSize"
+                $pageFileValue = "C:\\pagefile.sys $initialSizeMB $maxSizeMB"
+
+                Set-ItemProperty -Path $regPath -Name "PagingFiles" -Value @($pageFileValue) -Type MultiString -Force
+                Write-Host "Set registry: PagingFiles = $pageFileValue"
+
+                # Verify the setting
+                $verifyPF = (Get-ItemProperty -Path $regPath -Name "PagingFiles").PagingFiles
+                Write-Host "Verified registry value: $verifyPF"
+
+                Write-Host ""
+                Write-Host "=== Virtual Memory Optimization Complete! ==="
+                Write-Host "Custom page file configured:"
+                Write-Host "  Drive: C:\\"
+                Write-Host "  Initial Size: $initialSizeMB MB"
+                Write-Host "  Maximum Size: $maxSizeMB MB"
+                Write-Host ""
+                Write-Host "IMPORTANT: Restart your computer for changes to take effect!"
+
+            } catch {
+                Write-Error "Error optimizing virtual memory: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Virtual Memory:Executing virtual memory optimization script...")
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=90,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            if result.stdout.strip():
+                self.queue.put("PROGRESS:Virtual Memory:Script output:")
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Virtual Memory:  {line.strip()}")
+
+            if result.stderr.strip():
+                self.queue.put("PROGRESS:Virtual Memory:Script errors:")
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Virtual Memory:  {line.strip()}")
+
+            if result.returncode != 0:
+                self.queue.put(f"PROGRESS:Virtual Memory:Script exited with code {result.returncode}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Virtual Memory:Operation timed out")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Virtual Memory:Error optimizing virtual memory: {str(e)}")
+
+    def install_system_drivers_info(self):
+        """Try to install missing drivers, then display detailed driver information."""
+        self.queue.put("PROGRESS:Install System Drivers:Starting missing-driver detection and installation...")
+        try:
+            # Step 1: Ask Windows Update for missing driver updates
+            ps_script = r'''
+            try {
+                $session = New-Object -ComObject Microsoft.Update.Session
+                $searcher = $session.CreateUpdateSearcher()
+                $searchResult = $searcher.Search("IsInstalled=0 and Type='Driver'")
+                $updates = $searchResult.Updates
+
+                if ($updates.Count -eq 0) {
+                    Write-Host "No missing drivers found."
+                    exit 0
+                }
+
+                Write-Host "Found $($updates.Count) missing driver update(s):"
+                for ($i = 0; $i -lt $updates.Count; $i++) {
+                    Write-Host " - $($updates.Item($i).Title)"
+                }
+
+                $toDownload = New-Object -ComObject Microsoft.Update.UpdateColl
+                for ($i = 0; $i -lt $updates.Count; $i++) {
+                    $u = $updates.Item($i)
+                    if (-not $u.IsDownloaded) { [void]$toDownload.Add($u) }
+                }
+
+                if ($toDownload.Count -gt 0) {
+                    $downloader = $session.CreateUpdateDownloader()
+                    $downloader.Updates = $toDownload
+                    $downloadResult = $downloader.Download()
+                    if ($downloadResult.ResultCode -ne 2) { exit 1 }
+                }
+
+                $toInstall = New-Object -ComObject Microsoft.Update.UpdateColl
+                for ($i = 0; $i -lt $updates.Count; $i++) {
+                    $u = $updates.Item($i)
+                    if ($u.IsDownloaded) { [void]$toInstall.Add($u) }
+                }
+
+                if ($toInstall.Count -gt 0) {
+                    $installer = $session.CreateUpdateInstaller()
+                    $installer.Updates = $toInstall
+                    $installResult = $installer.Install()
+                    if ($installResult.ResultCode -ne 2) { exit 1 }
+                    if ($installResult.RebootRequired) { exit 2 }
+                }
+
+                exit 0
+            } catch {
+                Write-Error $_.Exception.Message
+                exit 1
+            }
+            '''
+            self.queue.put("PROGRESS:Install System Drivers:Attempting automatic driver install via Windows Update...")
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Install System Drivers', timeout=5400)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Install System Drivers:Driver installation timed out.")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Install System Drivers:Driver install step completed.")
+            elif rc == 2:
+                self.queue.put("PROGRESS:Install System Drivers:Drivers installed. A reboot is required.")
+            else:
+                self.queue.put("PROGRESS:Install System Drivers:Automatic driver install failed or partially completed.")
+
+            # Step 2: Always collect detailed inventory output
+            self.queue.put("PROGRESS:Install System Drivers:Collecting detailed driver inventory...")
+            commands = [
+                (["driverquery", "/v"], "driverquery /v"),
+                (["driverquery", "/si"], "driverquery /si")
+            ]
+
+            for cmd, label in commands:
+                self.queue.put(f"PROGRESS:Install System Drivers:Executing: {label}")
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=120,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+
+                    if result.stdout.strip():
+                        self.queue.put(f"PROGRESS:Install System Drivers:Output for {label}:")
+                        for line in result.stdout.strip().split('\n'):
+                            if line.strip():
+                                self.queue.put(f"PROGRESS:Install System Drivers:  {line.strip()}")
+
+                    if result.stderr.strip():
+                        self.queue.put(f"PROGRESS:Install System Drivers:Errors for {label}:")
+                        for line in result.stderr.strip().split('\n'):
+                            if line.strip():
+                                self.queue.put(f"PROGRESS:Install System Drivers:  {line.strip()}")
+
+                    if result.returncode != 0:
+                        self.queue.put(f"PROGRESS:Install System Drivers:{label} exited with code {result.returncode}")
+
+                except subprocess.TimeoutExpired:
+                    self.queue.put(f"PROGRESS:Install System Drivers:{label} timed out")
+
+            self.queue.put("PROGRESS:Install System Drivers:System driver information collection completed")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Install System Drivers:Error collecting system driver information: {str(e)}")
+
+    def run_win11_debloat(self):
+        """Download and run Raphire Win11Debloat script"""
+        self.queue.put("PROGRESS:Debloat Windows:Starting Win11Debloat integration...")
+        try:
+            ps_script = '''
+            try {
+                $ErrorActionPreference = "Stop"
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Write-Host "Downloading and launching Win11Debloat from GitHub..."
+                & ([scriptblock]::Create((Invoke-RestMethod "https://debloat.raphi.re/")))
+                Write-Host "Win11Debloat launched successfully"
+                Write-Host "Follow the Win11Debloat window prompts to apply debloat actions"
+            } catch {
+                Write-Error "Failed to run Win11Debloat: $($_.Exception.Message)"
+                exit 1
+            }
+            '''
+
+            self.queue.put("PROGRESS:Debloat Windows:Executing Win11Debloat PowerShell script...")
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Debloat Windows', timeout=300)
+
+            if timed_out:
+                self.queue.put("PROGRESS:Debloat Windows:Operation timed out")
+            elif rc != 0:
+                self.queue.put(f"PROGRESS:Debloat Windows:Script exited with code {rc}")
+            else:
+                self.queue.put("PROGRESS:Debloat Windows:Win11Debloat completed/started successfully")
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Debloat Windows:Error running Win11Debloat: {str(e)}")
+
+    def update_installed_apps(self):
+
+        """Update installed applications using Windows Package Manager (winget)"""
+        self.queue.put("PROGRESS:Update Apps:Starting application update process...")
+        try:
+            # Check if winget is available
+            self.queue.put("PROGRESS:Update Apps:Checking for Windows Package Manager (winget)...")
+            try:
+                subprocess.run(['winget', '--version'], capture_output=True, check=True, timeout=10,
+                               creationflags=CREATE_NO_WINDOW)
+                self.queue.put("PROGRESS:Update Apps:Windows Package Manager found")
+            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                self.queue.put("PROGRESS:Update Apps:Error: Windows Package Manager (winget) not found.")
+                self.queue.put("PROGRESS:Update Apps:Please install winget from the Microsoft Store.")
+                return
+
+            # First, get list of available updates
+            self.queue.put("PROGRESS:Update Apps:Checking for available updates...")
+            list_command = ['winget', 'upgrade', '--list']
+            result = subprocess.run(
+                list_command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+
+            updates = []
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if line.strip() and not line.startswith('-') and not line.startswith('Name'):
+                        # Extract app name from the line
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            app_name = parts[0]
+                            updates.append(app_name)
+
+                if updates:
+                    self.queue.put(f"PROGRESS:Update Apps:Found {len(updates)} updates:")
+                    for app in updates:
+                        self.queue.put(f"PROGRESS:Update Apps:  - {app}")
+                else:
+                    self.queue.put("PROGRESS:Update Apps:No updates found.")
+                    return
+            else:
+                self.queue.put("PROGRESS:Update Apps:Could not list updates. Proceeding with upgrade all.")
+
+            # Now run the upgrade command with real-time output
+            self.queue.put("PROGRESS:Update Apps:Starting upgrade process...")
+            safe_args = ['winget', 'upgrade', '--all', '--silent',
+                         '--accept-package-agreements', '--accept-source-agreements']
+
+            # Run the command and capture output in real-time
+            process = subprocess.Popen(
+                safe_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=CREATE_NO_WINDOW  # Hide console window
+            )
+
+            # Read the output in real-time
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    self.queue.put(f"PROGRESS:Update Apps:{output.strip()}")
+
+            # Check for any errors
+            stderr = process.stderr.read()
+            if stderr:
+                self.queue.put(f"PROGRESS:Update Apps:Errors:")
+                for line in stderr.strip().split('\n'):
+                    if line.strip():
+                        self.queue.put(f"PROGRESS:Update Apps:  {line.strip()}")
+
+            if process.returncode == 0:
+                self.queue.put("PROGRESS:Update Apps:App updates completed successfully")
+            else:
+                self.queue.put(f"PROGRESS:Update Apps:App updates completed with return code: {process.returncode}")
+
+        except subprocess.TimeoutExpired:
+            self.queue.put("PROGRESS:Update Apps:App update process timed out after 30 minutes")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Update Apps:Error updating apps: {str(e)}")
+
+    # ==================== UTILITY METHODS ====================
+
+    def prompt_reboot_for_updates(self):
+        """Prompt user to reboot now to complete Windows updates"""
+        response = messagebox.askyesno(
+            "Updates Installed",
+            "Windows updates have been installed successfully.\n\n"
+            "A system reboot is required to complete the installation.\n\n"
+            "Would you like to reboot now?"
+        )
+
+        if response:
+            self.queue.put("PROGRESS:Windows Updates:User initiated system reboot for updates...")
+            try:
+                # Reboot the system
+                subprocess.run(['shutdown', '/r', '/t', '30'], check=True, timeout=10, creationflags=CREATE_NO_WINDOW)
+                self.queue.put("PROGRESS:Windows Updates:System will reboot in 30 seconds...")
+                self.queue.put("PROGRESS:Windows Updates:Please save all work and close applications.")
+
+                # Show countdown dialog
+                messagebox.showinfo(
+                    "Reboot Initiated",
+                    "System will reboot in 30 seconds.\n\n"
+                    "To cancel the reboot, run 'shutdown /a' in command prompt."
+                )
+            except Exception as e:
+                self.queue.put(f"PROGRESS:Windows Updates:Error initiating reboot: {str(e)}")
+        else:
+            self.queue.put("PROGRESS:Windows Updates:User chose not to reboot now.")
+            self.queue.put("PROGRESS:Windows Updates:Updates will be applied on the next manual reboot.")
+
+    def prompt_reboot(self):
+        """Prompt user to reboot now to run CHKDSK"""
+        response = messagebox.askyesno(
+            "CHKDSK Scheduled",
+            "CHKDSK has been scheduled to run on the next reboot.\n\n"
+            "Would you like to reboot now to start the disk check?\n\n"
+            "WARNING: The reboot process may take a long time as CHKDSK runs.\n"
+            "Make sure to save all your work before proceeding."
+        )
+
+        if response:
+            self.queue.put("PROGRESS:CHKDSK:User initiated system reboot...")
+            try:
+                # Reboot the system with confirmation
+                subprocess.run(['shutdown', '/r', '/t', '30'], check=True, timeout=10, creationflags=CREATE_NO_WINDOW)
+                self.queue.put("PROGRESS:CHKDSK:System will reboot in 30 seconds...")
+                self.queue.put("PROGRESS:CHKDSK:Please save all work and close applications.")
+
+                # Show countdown dialog
+                messagebox.showinfo(
+                    "Reboot Initiated",
+                    "System will reboot in 30 seconds.\n\n"
+                    "To cancel the reboot, run 'shutdown /a' in command prompt."
+                )
+            except Exception as e:
+                self.queue.put(f"PROGRESS:CHKDSK:Error initiating reboot: {str(e)}")
+        else:
+            self.queue.put("PROGRESS:CHKDSK:User chose not to reboot now.")
+            self.queue.put("PROGRESS:CHKDSK:CHKDSK will run on the next manual reboot.")
+
+    def open_install_apps_window(self):
+        """Open a professional dialog to search and install apps from the winutil database"""
+        # Diagnostic: Check database status
+        try:
+            db_size = len(INSTALLABLE_APPS)
+            categories = get_categories()
+            print(f"DEBUG: App Installer database size: {db_size}")
+            print(f"DEBUG: Categories found: {len(categories)}")
+        except Exception as e:
+            print(f"DEBUG: Error accessing app database: {str(e)}")
+            messagebox.showerror("Database Error",
+                                 "Could not access the application internal database. Please report this error.")
+            return
+
+        installer_win = tk.Toplevel(self.root)
+        installer_win.title("WinMend - App Installer")
+        installer_win.geometry("1200x860")
+        installer_win.configure(bg=self.theme['bg'])
+        installer_win.transient(self.root)
+        installer_win.grab_set()
+
+        # Center the window
+        installer_win.update_idletasks()
+        width = installer_win.winfo_width()
+        height = installer_win.winfo_height()
+        x = (installer_win.winfo_screenwidth() // 2) - (width // 2)
+        y = (installer_win.winfo_screenheight() // 2) - (height // 2)
+        installer_win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+
+        # Main Header
+        header_frame = tk.Frame(installer_win, bg=self.theme['header_bg'], height=80)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        header_label = tk.Label(
+            header_frame,
+            text="App Installer",
+            font=('Segoe UI', 22, 'bold'),
+            bg=self.theme['header_bg'],
+            fg=self.theme['header_fg']
+        )
+        header_label.pack(side=tk.LEFT, padx=36, pady=18)
+
+        # Subtle accent line
+        tk.Frame(installer_win, bg=self.theme['primary'], height=1).pack(fill=tk.X)
+
+        # Search and Selection Summary Frame
+        top_bar = tk.Frame(installer_win, bg=self.theme['surface'], height=60)
+        top_bar.pack(fill=tk.X, padx=28, pady=18)
+
+        search_label = tk.Label(top_bar, text="Search:", font=('Segoe UI', 11), bg=self.theme['surface'],
+                                fg=self.theme['label_fg'])
+        search_label.pack(side=tk.LEFT, padx=(14, 8))
+
+        search_var = tk.StringVar()
+        search_entry = tk.Entry(
+            top_bar,
+            textvariable=search_var,
+            font=('Segoe UI', 12),
+            bg=self.theme['entry_bg'],
+            fg=self.theme['entry_fg'],
+            insertbackground=self.theme['primary'],
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=self.theme['surface_alt']
+        )
+        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12, pady=12)
+        search_entry.focus_set()
+
+        selection_label = tk.Label(top_bar, text="Apps: 0/0", font=('Segoe UI', 11, 'bold'),
+                                   bg=self.theme['surface'], fg=self.theme['primary'])
+        selection_label.pack(side=tk.RIGHT, padx=20)
+
+        diagnostic_label = tk.Label(top_bar, text="Status: Ready", font=('Segoe UI', 10),
+                                    bg=self.theme['surface'], fg=self.theme['label_fg_dim'])
+        diagnostic_label.pack(side=tk.RIGHT, padx=12)
+
+        # Content Area with Sidebar and App Grid
+        content_frame = tk.Frame(installer_win, bg=self.theme['bg'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=(0, 24))
+
+        # Sidebar for Categories
+        sidebar = tk.Frame(content_frame, bg=self.theme['surface'], width=230)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 18))
+        sidebar.pack_propagate(False)
+
+        sidebar_header = tk.Label(sidebar, text="CATEGORIES", font=('Segoe UI', 10, 'bold'), bg=self.theme['surface'],
+                                  fg=self.theme['label_fg_dim'], pady=12)
+        sidebar_header.pack(fill=tk.X)
+
+        # Scroll wheel scroll handling to prevent background bleed
+        def _on_mousewheel(event, canvas):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            return "break"
+
+        def bind_scroll(widget, canvas):
+            widget.bind("<MouseWheel>", lambda e: _on_mousewheel(e, canvas))
+
+        # Scrollable categories list
+        cat_canvas = tk.Canvas(sidebar, bg=self.theme['surface'], highlightthickness=0)
+        cat_scrollbar = ttk.Scrollbar(sidebar, orient="vertical", command=cat_canvas.yview)
+        cat_scrollable_frame = tk.Frame(cat_canvas, bg=self.theme['surface'])
+
+        cat_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: cat_canvas.configure(scrollregion=cat_canvas.bbox("all"))
+        )
+
+        cat_canvas.create_window((0, 0), window=cat_scrollable_frame, anchor="nw", width=220)
+        cat_canvas.configure(yscrollcommand=cat_scrollbar.set)
+
+        # Bind sidebar to scroll
+        cat_canvas.bind("<MouseWheel>", lambda e: _on_mousewheel(e, cat_canvas))
+        cat_scrollable_frame.bind("<MouseWheel>", lambda e: _on_mousewheel(e, cat_canvas))
+
+        cat_canvas.pack(side="left", fill="both", expand=True)
+        cat_scrollbar.pack(side="right", fill="y")
+
+        # Main Apps Grid Area (Scrollable)
+        apps_container = tk.Frame(content_frame, bg=self.theme['surface'], bd=0)
+        apps_container.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        app_canvas = tk.Canvas(apps_container, bg=self.theme['surface'], highlightthickness=0)
+        app_scrollbar = ttk.Scrollbar(apps_container, orient="vertical", command=app_canvas.yview)
+        app_grid_frame = tk.Frame(app_canvas, bg=self.theme['surface'])
+
+        app_canvas.bind("<MouseWheel>", lambda e: _on_mousewheel(e, app_canvas))
+        app_grid_frame.bind("<MouseWheel>", lambda e: _on_mousewheel(e, app_canvas))
+
+        app_grid_frame.bind(
+            "<Configure>",
+            lambda e: app_canvas.configure(scrollregion=app_canvas.bbox("all"))
+        )
+
+        # Ensure the grid frame stays as wide as the canvas
+        def sync_width(event):
+            app_canvas.itemconfig(grid_window, width=event.width)
+
+        grid_window = app_canvas.create_window((0, 0), window=app_grid_frame, anchor="nw")
+        app_canvas.bind("<Configure>", sync_width)
+        app_canvas.configure(yscrollcommand=app_scrollbar.set)
+
+        app_canvas.pack(side="left", fill="both", expand=True)
+        app_scrollbar.pack(side="right", fill="y")
+
+        # Variables for app selection
+        app_vars = {}
+        app_widgets = {}
+
+        def update_selection_count(*args):
+            count = sum(1 for var in app_vars.values() if var.get())
+            diagnostic_label.config(text=f"Selected: {count} | Total: {len(INSTALLABLE_APPS)}")
+            if count > 0:
+                install_btn.config(state=tk.NORMAL, bg=self.theme['primary'], fg=self.theme['button_fg'])
+            else:
+                install_btn.config(state=tk.DISABLED, bg=self.theme['surface_alt'], fg=self.theme['label_fg_dim'])
+
+        def apply_filter(*args):
+            query = search_var.get().lower()
+            current_cat = active_cat_var.get()
+
+            # Hide all widgets first
+            for widget in app_widgets.values():
+                widget.grid_forget()
+
+            row = 0
+            col = 0
+            cols = 3  # Fixed columns for the grid
+
+            visible_count = 0
+            for app_name, app_data in INSTALLABLE_APPS.items():
+                match_query = query in app_name.lower() or query in app_data['description'].lower()
+                match_cat = current_cat == "All Apps" or app_data['category'] == current_cat
+
+                if match_query and match_cat:
+                    if app_name in app_widgets:
+                        widget = app_widgets[app_name]
+                        widget.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+                        col += 1
+                        if col >= cols:
+                            col = 0
+                            row += 1
+                        visible_count += 1
+
+            # Configure grid weights for uniform spacing
+            for i in range(cols):
+                app_grid_frame.grid_columnconfigure(i, weight=1)
+
+            # Force update and scrollregion sync
+            selection_label.config(text=f"Visible: {visible_count}/{len(INSTALLABLE_APPS)}")
+            app_grid_frame.update_idletasks()
+            app_canvas.config(scrollregion=app_canvas.bbox("all"))
+            print(f"DEBUG: Apps visible after filter: {visible_count}")
+
+        # Initialize App Cards
+        creation_errors = 0
+        for app_name, app_data in INSTALLABLE_APPS.items():
+            try:
+                var = tk.BooleanVar()
+                app_vars[app_name] = var
+                var.trace_add("write", update_selection_count)
+
+                # App Card Frame
+                card = tk.Frame(app_grid_frame, bg=self.theme['surface'], bd=0, relief=tk.FLAT, highlightthickness=2,
+                                highlightbackground=self.theme['card_border'])
+
+                # Checkbox + Title
+                cb = tk.Checkbutton(
+                    card,
+                    text=app_name,
+                    variable=var,
+                    font=('Segoe UI', 10, 'bold'),
+                    bg=self.theme['surface'],
+                    fg=self.theme['task_fg'],
+                    selectcolor=self.theme['surface_alt'],
+                    activebackground=self.theme['surface_alt'],
+                    activeforeground=self.theme['primary'],
+                    anchor=tk.W,
+                    bd=0
+                )
+                cb.pack(fill=tk.X, padx=14, pady=(12, 0))
+
+                # Description
+                desc = tk.Label(
+                    card,
+                    text=app_data['description'],
+                    font=('Segoe UI', 9),
+                    bg=self.theme['surface'],
+                    fg=self.theme['label_fg_dim'],
+                    wraplength=260,
+                    justify=tk.LEFT,
+                    anchor=tk.NW,
+                    height=2
+                )
+                desc.pack(fill=tk.BOTH, expand=True, padx=14, pady=(4, 14))
+
+                app_widgets[app_name] = card
+
+                # Helper to toggle app when card is clicked
+                def make_toggle_handler(v):
+                    return lambda e: v.set(not v.get())
+
+                toggle_handler = make_toggle_handler(var)
+                card.bind("<Button-1>", toggle_handler)
+                desc.bind("<Button-1>", toggle_handler)
+                # Note: cb (Checkbutton) handles its own click
+
+                # Bind card and children to scroll to prevent background bleed
+                bind_scroll(card, app_canvas)
+                bind_scroll(cb, app_canvas)
+                bind_scroll(desc, app_canvas)
+            except Exception as e:
+                print(f"DEBUG: Failed to create card for {app_name}: {str(e)}")
+                creation_errors += 1
+
+        if creation_errors > 0:
+            diagnostic_label.config(text=f"Errors: {creation_errors} cards failed", fg="#FF0000")
+
+        # Category logic
+        active_cat_var = tk.StringVar(value="All Apps")
+        category_buttons = {}
+
+        def select_category(cat_name):
+            active_cat_var.set(cat_name)
+            for name, btn in category_buttons.items():
+                if name == cat_name:
+                    btn.config(bg=self.theme['primary'], fg=self.theme['button_fg'])
+                else:
+                    btn.config(bg=self.theme['surface'], fg=self.theme['label_fg'])
+            apply_filter()
+
+        # Add "All Apps" category
+        all_btn = tk.Button(
+            cat_scrollable_frame,
+            text=f"All Apps ({len(INSTALLABLE_APPS)})",
+            command=lambda: select_category("All Apps"),
+            font=('Segoe UI', 10, 'bold'),
+            bg=self.theme['primary'],
+            fg=self.theme['button_fg'],
+            bd=0,
+            padx=18,
+            pady=12,
+            anchor=tk.W,
+            cursor="hand2"
+        )
+        all_btn.pack(fill=tk.X)
+        category_buttons["All Apps"] = all_btn
+
+        # Add other categories
+        cat_names = get_categories()
+        cat_counts = {}
+        for app in INSTALLABLE_APPS.values():
+            cat = app['category']
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+
+        for cat in cat_names:
+            btn = tk.Button(
+                cat_scrollable_frame,
+                text=f"{cat} ({cat_counts[cat]})",
+                command=lambda c=cat: select_category(c),
+                font=('Segoe UI', 10),
+                bg=self.theme['surface'],
+                fg=self.theme['label_fg'],
+                bd=0,
+                padx=18,
+                pady=11,
+                anchor=tk.W,
+                cursor="hand2"
+            )
+            btn.pack(fill=tk.X)
+            category_buttons[cat] = btn
+
+        # Bottom Action Bar
+        action_bar = tk.Frame(installer_win, bg=self.theme['bg'], height=100)
+        action_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=28, pady=24)
+
+        def start_installation():
+            selected_apps = [name for name, var in app_vars.items() if var.get()]
+            if not selected_apps:
+                return
+
+            if messagebox.askyesno("Confirm Installation",
+                                   f"Are you sure you want to install {len(selected_apps)} application(s)?\n\nThis will use Winget to download and install the software."):
+                installer_win.destroy()
+                # Run in background via existing task system
+                threading.Thread(target=self.install_selected_apps, args=(selected_apps,), daemon=True).start()
+
+        install_btn = tk.Button(
+            action_bar,
+            text="  START BATCH INSTALLATION  ",
+            font=('Segoe UI', 12, 'bold'),
+            command=start_installation,
+            bg=self.theme['surface_alt'],
+            fg=self.theme['label_fg_dim'],
+            state=tk.DISABLED,
+            bd=0,
+            padx=36,
+            pady=14,
+            cursor="hand2",
+            relief=tk.FLAT
+        )
+        install_btn.pack(side=tk.RIGHT)
+
+        close_btn = tk.Button(
+            action_bar,
+            text="  CANCEL  ",
+            font=('Segoe UI', 12),
+            command=installer_win.destroy,
+            bg=self.theme['button_secondary_bg'],
+            fg=self.theme['button_secondary_fg'],
+            bd=0,
+            padx=36,
+            pady=14,
+            cursor="hand2",
+            relief=tk.FLAT
+        )
+        close_btn.pack(side=tk.RIGHT, padx=16)
+
+        # Connect search var to filter
+        search_var.trace_add("write", apply_filter)
+
+        # Initial display
+        apply_filter()
+
+    def run_minidump_analyzer(self):
+        """Downloads and extracts NirSoft BlueScreenView, then runs it"""
+        task_label = "minidump_analyzer"
+        
+        url = "https://www.nirsoft.net/utils/bluescreenview-x64.zip"
+        temp_dir = os.environ.get('TEMP', 'C:\\Windows\\Temp')
+        zip_path = os.path.join(temp_dir, "bluescreenview-x64.zip")
+        extract_dir = os.path.join(temp_dir, "BlueScreenView")
+        exe_path = os.path.join(extract_dir, "BlueScreenView.exe")
+        
+        self.queue.put(f"PROGRESS:{task_label}:Downloading BlueScreenView from NirSoft...")
+        try:
+            import urllib.request
+            import zipfile
+            
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out_file:
+                out_file.write(response.read())
+                
+            self.queue.put(f"PROGRESS:{task_label}:Extracting BlueScreenView...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+                
+            self.queue.put(f"PROGRESS:{task_label}:Launching BlueScreenView...")
+            
+            # Use DETACHED_PROCESS to launch the GUI without tying it to the cleaner's console
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen([exe_path], creationflags=DETACHED_PROCESS)
+            
+            self.queue.put(f"PROGRESS:{task_label}:BlueScreenView launched successfully.")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{task_label}:Error executing MiniDump Analyzer: {str(e)}")
+
+    def run_deep_network_remediation(self):
+        """Runs extensive network stack remediation commands"""
+        task_label = "deep_network_remediation"
+        self.queue.put(f"PROGRESS:{task_label}:Starting Deep Network Stack Remediation...")
+        
+        commands = [
+            (["ipconfig", "/release"], "Releasing IPv4 address..."),
+            (["ipconfig", "/flushdns"], "Flushing DNS resolver cache..."),
+            (["ipconfig", "/renew"], "Renewing IPv4 address..."),
+            (["netsh", "winsock", "reset"], "Resetting Winsock Catalog..."),
+            (["netsh", "int", "ip", "reset"], "Resetting TCP/IP stack..."),
+            (["netsh", "advfirewall", "reset"], "Resetting Windows Firewall to defaults..."),
+            (["nbtstat", "-R"], "Purging and reloading NBT remote cache name table..."),
+            (["nbtstat", "-RR"], "Sending Name Release packets to WINS..."),
+            (["netsh", "branchcache", "reset"], "Resetting BranchCache..."),
+            (["netsh", "interface", "ipv4", "reset"], "Resetting IPv4 interfaces..."),
+            (["netsh", "interface", "ipv6", "reset"], "Resetting IPv6 interfaces..."),
+            (["netsh", "interface", "tcp", "reset"], "Resetting TCP interfaces..."),
+            (["arp", "-d", "*"], "Clearing ARP cache...")
+        ]
+
+        CREATE_NO_WINDOW = 0x08000000
+        for cmd, desc in commands:
+            self.queue.put(f"PROGRESS:{task_label}:{desc}")
+            try:
+                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+            except Exception as e:
+                self.queue.put(f"PROGRESS:{task_label}:Error running command {cmd}: {e}")
+                
+        self.queue.put(f"PROGRESS:{task_label}:Deep network remediation complete. A system reboot is highly recommended.")
+
+    def run_sysinternals_autoruns(self):
+        """Downloads and launches Sysinternals Autoruns"""
+        task_label = "sysinternals_autoruns"
+        url = "https://live.sysinternals.com/Autoruns64.exe"
+        temp_dir = os.environ.get('TEMP', 'C:\\Windows\\Temp')
+        exe_path = os.path.join(temp_dir, "Autoruns64.exe")
+        
+        self.queue.put(f"PROGRESS:{task_label}:Downloading Sysinternals Autoruns...")
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            with urllib.request.urlopen(req) as response, open(exe_path, 'wb') as out_file:
+                out_file.write(response.read())
+                
+            self.queue.put(f"PROGRESS:{task_label}:Launching Autoruns...")
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen([exe_path, "/accepteula"], creationflags=DETACHED_PROCESS)
+            self.queue.put(f"PROGRESS:{task_label}:Autoruns launched successfully.")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{task_label}:Error executing Autoruns: {str(e)}")
+
+    def run_sysinternals_procexp(self):
+        """Downloads and launches Sysinternals Process Explorer"""
+        task_label = "sysinternals_procexp"
+        url = "https://live.sysinternals.com/procexp64.exe"
+        temp_dir = os.environ.get('TEMP', 'C:\\Windows\\Temp')
+        exe_path = os.path.join(temp_dir, "procexp64.exe")
+        
+        self.queue.put(f"PROGRESS:{task_label}:Downloading Sysinternals Process Explorer...")
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            with urllib.request.urlopen(req) as response, open(exe_path, 'wb') as out_file:
+                out_file.write(response.read())
+                
+            self.queue.put(f"PROGRESS:{task_label}:Launching Process Explorer...")
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen([exe_path, "/accepteula"], creationflags=DETACHED_PROCESS)
+            self.queue.put(f"PROGRESS:{task_label}:Process Explorer launched successfully.")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{task_label}:Error executing Process Explorer: {str(e)}")
+
+    def _create_restore_point_guardrail(self, reason):
+        """Attempt to create a restore point guardrail before risky operations."""
+        safe_reason = re.sub(r'[^a-zA-Z0-9 _-]', '', str(reason))[:42]
+        self.queue.put(f"PROGRESS:Guardrail:Creating restore point before: {safe_reason}")
+        ps_script = f'''
+        try {{
+            $ErrorActionPreference = "Stop"
+            
+            # Ensure System Restore is enabled on C:
+            Enable-ComputerRestore -Drive "C:\\" -ErrorAction SilentlyContinue
+            
+            # Bypass 24-hour frequency limit in Windows 10/11
+            $regKey = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore"
+            New-ItemProperty -Path $regKey -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+            
+            # Use WMI for lightning fast creation
+            $desc = "EAWTECH Guardrail - {safe_reason}"
+            $wmiClass = Get-WmiObject -List -Namespace "root\\default" | Where-Object {{ $_.Name -eq "SystemRestore" }}
+            
+            if ($wmiClass) {{
+                $result = $wmiClass.CreateRestorePoint($desc, 7, 100)
+                if ($result.ReturnValue -in 0, 4096) {{
+                    Write-Host "Restore point created successfully via WMI."
+                    exit 0
+                }} else {{
+                    Write-Host "WMI returned $($result.ReturnValue), attempting fallback."
+                }}
+            }}
+            
+            # Fallback
+            Checkpoint-Computer -Description $desc -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+            Write-Host "Restore point created successfully (fallback)."
+            exit 0
+            
+        }} catch {{
+            Write-Host "Restore point creation skipped/failed: $($_.Exception.Message)"
+            exit 1
+        }}
+        '''
+        try:
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Guardrail', timeout=120)
+            if timed_out:
+                self.queue.put("PROGRESS:Guardrail:Restore point creation timed out.")
+                return False
+            if rc == 0:
+                self.queue.put("PROGRESS:Guardrail:Restore point guardrail ready.")
+                return True
+            self.queue.put("PROGRESS:Guardrail:Using existing system restore history (new checkpoint not created).")
+            return False
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Guardrail:Restore point guardrail error: {str(e)}")
+            return False
+
+    def run_create_restore_point_guardrail(self):
+        """Manual task: create a restore point."""
+        self._create_restore_point_guardrail("Manual Guardrail")
+
+    def run_bsod_triage(self):
+        """Collect BSOD diagnostics into a single Desktop report and launch analyzer."""
+        self.queue.put("PROGRESS:BSOD Triage:Collecting crash dump and bugcheck diagnostics...")
+        try:
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            report_path = os.path.join(desktop, f"BSOD_Triage_{ts}.txt")
+            minidump_dir = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'Minidump')
+            memory_dmp = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'MEMORY.DMP')
+
+            lines = []
+            lines.append("=== EAWTECH BSOD TRIAGE REPORT ===")
+            lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            lines.append("")
+            lines.append(f"Minidump folder: {minidump_dir}")
+
+            if os.path.isdir(minidump_dir):
+                dumps = sorted(
+                    [os.path.join(minidump_dir, f) for f in os.listdir(minidump_dir) if f.lower().endswith('.dmp')],
+                    key=lambda p: os.path.getmtime(p), reverse=True
+                )
+                lines.append(f"Minidumps found: {len(dumps)}")
+                for d in dumps[:15]:
+                    dt = datetime.fromtimestamp(os.path.getmtime(d)).strftime("%Y-%m-%d %H:%M:%S")
+                    lines.append(f"  - {os.path.basename(d)} ({dt})")
+            else:
+                lines.append("Minidump folder not found.")
+
+            lines.append(f"MEMORY.DMP exists: {'Yes' if os.path.exists(memory_dmp) else 'No'}")
+            lines.append("")
+
+            ps_script = r'''
+            Write-Host "=== RECENT BUGCHECK EVENTS (Event ID 1001) ==="
+            Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001} -MaxEvents 15 -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    $msg = $_.Message -replace "\r|\n", " "
+                    Write-Host ("[{0}] {1}" -f $_.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss"), $msg)
+                }
+            Write-Host ""
+            Write-Host "=== CRASH-RELATED DRIVER EVENTS (Kernel-PnP/Display) ==="
+            Get-WinEvent -FilterHashtable @{LogName='System'} -MaxEvents 250 -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProviderName -match 'Kernel-PnP|Display|WHEA-Logger' -and $_.LevelDisplayName -in @('Error','Critical','Warning') } |
+                Select-Object -First 30 |
+                ForEach-Object {
+                    $msg = $_.Message -replace "\r|\n", " "
+                    Write-Host ("[{0}] {1}: {2}" -f $_.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss"), $_.ProviderName, $msg)
+                }
+            '''
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True, text=True, check=False, timeout=90, creationflags=CREATE_NO_WINDOW
+            )
+            if result.stdout:
+                lines.append(result.stdout.strip())
+            if result.stderr:
+                lines.append("")
+                lines.append("=== PowerShell stderr ===")
+                lines.append(result.stderr.strip())
+
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write("\n".join(lines))
+
+            self.queue.put(f"PROGRESS:BSOD Triage:Report saved to {report_path}")
+            self.run_minidump_analyzer()
+        except Exception as e:
+            self.queue.put(f"PROGRESS:BSOD Triage:Error: {str(e)}")
+
+    def run_driver_rollback_center(self):
+        """Create rollback snapshots and guidance workbook for drivers."""
+        self.queue.put("PROGRESS:Driver Rollback Center:Creating driver rollback center snapshot...")
+        self._create_restore_point_guardrail("Driver Rollback Center")
+        try:
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            out_dir = os.path.join(desktop, f"DriverRollbackCenter_{ts}")
+            os.makedirs(out_dir, exist_ok=True)
+
+            commands = [
+                (['pnputil', '/enum-drivers'], 'pnputil_enum_drivers.txt'),
+                (['driverquery', '/v'], 'driverquery_verbose.txt'),
+                (['driverquery', '/si'], 'driverquery_signed.txt'),
+                (['powershell', '-NoProfile', '-Command', 'Get-PnpDevice | Sort-Object Class, Status | Format-Table -AutoSize'], 'pnp_devices.txt'),
+            ]
+            for cmd, filename in commands:
+                try:
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, check=False, timeout=180, creationflags=CREATE_NO_WINDOW
+                    )
+                    with open(os.path.join(out_dir, filename), 'w', encoding='utf-8') as f:
+                        f.write(result.stdout or "")
+                        if result.stderr:
+                            f.write("\n\n=== STDERR ===\n")
+                            f.write(result.stderr)
+                except Exception as inner:
+                    with open(os.path.join(out_dir, filename), 'w', encoding='utf-8') as f:
+                        f.write(f"Collection error: {str(inner)}")
+
+            guide = os.path.join(out_dir, "Rollback_Guide.txt")
+            with open(guide, 'w', encoding='utf-8') as f:
+                f.write(
+                    "EAWTECH Driver Rollback Center\n"
+                    "=================================\n"
+                    "1. Open Device Manager.\n"
+                    "2. Identify failing class (Display/Network/Storage).\n"
+                    "3. Open device Properties -> Driver -> Roll Back Driver.\n"
+                    "4. If rollback unavailable, reinstall previous OEM package.\n"
+                    "5. Use restore point 'EAWTECH Guardrail - Driver Rollback Center' if system becomes unstable.\n"
+                )
+
+            self.queue.put(f"PROGRESS:Driver Rollback Center:Snapshot created at {out_dir}")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Driver Rollback Center:Error: {str(e)}")
+
+    def run_windows_update_forensic_fixer(self):
+        """Diagnose update failure phases and apply targeted remediation."""
+        self.queue.put("PROGRESS:Update Forensic:Running Windows Update forensic diagnostics...")
+        try:
+            ps_diag = r'''
+            Write-Host "=== Service State ==="
+            Get-Service wuauserv,bits,cryptsvc,trustedinstaller | Select-Object Name,Status,StartType | Format-Table -AutoSize
+            Write-Host ""
+            Write-Host "=== Pending Reboot Signals ==="
+            $keys = @(
+              "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+              "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+            )
+            foreach ($k in $keys) { if (Test-Path $k) { Write-Host "Pending reboot key present: $k" } }
+            Write-Host ""
+            Write-Host "=== Recent Windows Update Errors ==="
+            Get-WinEvent -FilterHashtable @{LogName='System'} -MaxEvents 400 -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -match 'WindowsUpdateClient|Service Control Manager' -and $_.LevelDisplayName -in @('Error','Critical','Warning') } |
+              Select-Object -First 40 |
+              ForEach-Object { Write-Host ("[{0}] {1} {2}" -f $_.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss"), $_.ProviderName, ($_.Message -replace "\r|\n"," ")) }
+            '''
+            self._run_live_command(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_diag],
+                                   'Update Forensic', timeout=180)
+
+            self.queue.put("PROGRESS:Update Forensic:Applying targeted update component repair...")
+            self.reset_windows_update()
+            self.queue.put("PROGRESS:Update Forensic:Re-checking and installing updates...")
+            self.check_and_install_windows_updates()
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Update Forensic:Error: {str(e)}")
+
+    def run_smart_malware_remediation(self):
+        """Run layered malware remediation and persistence inventory."""
+        self.queue.put("PROGRESS:Smart Malware:Starting smart remediation workflow...")
+        self._create_restore_point_guardrail("Smart Malware Remediation")
+        try:
+            ps_script = r'''
+            try {
+              Write-Host "Updating Defender signatures..."
+              Update-MpSignature -ErrorAction SilentlyContinue
+              Write-Host "Running Defender quick scan..."
+              Start-MpScan -ScanType QuickScan -ErrorAction SilentlyContinue
+              Write-Host "Collecting recent threat detections..."
+              Get-MpThreatDetection -ErrorAction SilentlyContinue | Select-Object -First 30 | Format-Table -AutoSize
+              Write-Host ""
+              Write-Host "Startup persistence inventory:"
+              Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue |
+                Select-Object Name, Command, Location, User | Format-Table -AutoSize
+              Write-Host ""
+              Write-Host "Scheduled task persistence inventory:"
+              schtasks /query /fo LIST /v | findstr /i "TaskName: Author: Run As User: Task To Run:"
+            } catch {
+              Write-Error $_.Exception.Message
+              exit 1
+            }
+            '''
+            self._run_live_command(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                                   'Smart Malware', timeout=1200)
+            self.run_msrt_scan()
+            self.queue.put("PROGRESS:Smart Malware:Remediation workflow complete.")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Smart Malware:Error: {str(e)}")
+
+    def run_network_diagnostic_bundle(self):
+        """Create a deep network diagnostic report and health score."""
+        self.queue.put("PROGRESS:Network Diagnostic:Building deep network diagnostic bundle...")
+        try:
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            report_path = os.path.join(desktop, f"Network_Diagnostic_Bundle_{ts}.txt")
+
+            cmd_outputs = []
+            checks = [
+                (['ipconfig', '/all'], 'ipconfig /all'),
+                (['route', 'print'], 'route print'),
+                (['netsh', 'interface', 'ip', 'show', 'config'], 'netsh interface ip show config'),
+                (['nslookup', 'google.com'], 'nslookup google.com'),
+                (['ping', '-n', '2', '1.1.1.1'], 'ping 1.1.1.1'),
+                (['ping', '-n', '2', '8.8.8.8'], 'ping 8.8.8.8'),
+                (['ping', '-n', '2', 'google.com'], 'ping google.com'),
+                (['powershell', '-NoProfile', '-Command',
+                  'Get-NetAdapter | Select-Object Name, Status, LinkSpeed, MacAddress | Format-Table -AutoSize'],
+                 'Get-NetAdapter')
+            ]
+
+            score = 100
+            for cmd, label in checks:
+                try:
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, check=False, timeout=90, creationflags=CREATE_NO_WINDOW
+                    )
+                    cmd_outputs.append(f"\n=== {label} ===\n")
+                    cmd_outputs.append(result.stdout or "")
+                    if result.returncode != 0:
+                        score -= 10
+                        cmd_outputs.append(f"\n(return code {result.returncode})\n")
+                except Exception as inner:
+                    score -= 15
+                    cmd_outputs.append(f"\n=== {label} ===\nError: {str(inner)}\n")
+
+            score = max(0, min(100, score))
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(f"EAWTECH Network Diagnostic Bundle\nGenerated: {datetime.now()}\nHealth Score: {score}/100\n")
+                f.write("\n".join(cmd_outputs))
+
+            self.queue.put(f"PROGRESS:Network Diagnostic:Report saved to {report_path}")
+            self.queue.put(f"PROGRESS:Network Diagnostic:Computed health score: {score}/100")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Network Diagnostic:Error: {str(e)}")
+
+    def run_service_dependency_repair(self):
+        """Repair critical service dependency chains and restart core services."""
+        self.queue.put("PROGRESS:Service Repair:Repairing critical Windows services and dependencies...")
+        self._create_restore_point_guardrail("Service Dependency Repair")
+        ps_script = r'''
+        try {
+            $targets = @("wuauserv","bits","cryptsvc","eventlog","WinDefend","Dnscache","Dhcp","nlasvc","WlanSvc")
+            foreach ($name in $targets) {
+                $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+                if (-not $svc) { Write-Host "Service missing: $name"; continue }
+
+                # Start required dependencies first
+                foreach ($dep in $svc.RequiredServices) {
+                    try {
+                        if ($dep.Status -ne 'Running') {
+                            Start-Service -Name $dep.Name -ErrorAction Stop
+                            Write-Host "Started dependency $($dep.Name) for $name"
+                        }
+                    } catch {
+                        Write-Host "Could not start dependency $($dep.Name) for $name: $($_.Exception.Message)"
+                    }
+                }
+
+                try {
+                    Set-Service -Name $name -StartupType Automatic -ErrorAction SilentlyContinue
+                } catch {}
+
+                try {
+                    if ($svc.Status -ne 'Running') {
+                        Start-Service -Name $name -ErrorAction Stop
+                        Write-Host "Started service: $name"
+                    } else {
+                        Write-Host "Service already running: $name"
+                    }
+                } catch {
+                    Write-Host "Failed to start $name: $($_.Exception.Message)"
+                }
+            }
+            exit 0
+        } catch {
+            Write-Error $_.Exception.Message
+            exit 1
+        }
+        '''
+        try:
+            rc, timed_out = self._run_live_command(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                'Service Repair', timeout=300)
+            if timed_out:
+                self.queue.put("PROGRESS:Service Repair:Operation timed out.")
+            elif rc == 0:
+                self.queue.put("PROGRESS:Service Repair:Service dependency repair completed.")
+            else:
+                self.queue.put(f"PROGRESS:Service Repair:Completed with return code {rc}.")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Service Repair:Error: {str(e)}")
+
+    def install_selected_apps(self, app_list):
+        """Worker method to install apps via Winget"""
+        self.show_progress(True)
+        self.queue.put(f"TASK_START:app_installer:App Installer")
+        self.queue.put(f"PROGRESS:app_installer:Starting installation of {len(app_list)} apps...")
+
+        success_count = 0
+        fail_count = 0
+
+        for i, app_name in enumerate(app_list):
+            if app_name not in INSTALLABLE_APPS:
+                continue
+
+            winget_id = INSTALLABLE_APPS[app_name]['winget']
+            self.queue.put(f"PROGRESS:app_installer:({i + 1}/{len(app_list)}) Installing {app_name} [{winget_id}]...")
+
+            try:
+                # Use winget install --silent --accept-package-agreements --accept-source-agreements
+                cmd = [
+                    'winget', 'install', '--id', winget_id,
+                    '--silent', '--accept-package-agreements', '--accept-source-agreements'
+                ]
+
+                rc, timed_out = self._run_live_command(cmd, 'app_installer', timeout=600)
+
+                if rc == 0:
+                    self.queue.put(f"PROGRESS:app_installer:Successfully installed {app_name}")
+                    success_count += 1
+                elif rc == 0x8A150030:
+                    self.queue.put(f"PROGRESS:app_installer:{app_name} is already installed. Skipping.")
+                    success_count += 1
+                else:
+                    self.queue.put(
+                        f"PROGRESS:app_installer:Failed to install {app_name}. Error code: {rc}")
+                    fail_count += 1
+
+            except Exception as e:
+                self.queue.put(f"PROGRESS:app_installer:Error installing {app_name}: {str(e)}")
+                fail_count += 1
+
+        self.queue.put(
+            f"PROGRESS:app_installer:Batch installation complete. Success: {success_count}, Failed: {fail_count}")
+        self.queue.put("TASK_END:app_installer")
+        self.queue.put("TASKS_COMPLETE")
+
+
+    def _prompt_product_key(self):
+        """Show a themed dialog to collect the Windows product key. Returns the key or None."""
+        result = [None]
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Activate Windows/Change Product Key \u2014 Enter Product Key")
+        dialog.configure(bg=self.theme['bg'])
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Centre over the main window
+        dialog.update_idletasks()
+        rx = self.root.winfo_rootx() + self.root.winfo_width() // 2
+        ry = self.root.winfo_rooty() + self.root.winfo_height() // 2
+        dialog.geometry(f"420x200+{rx - 210}+{ry - 100}")
+
+        tk.Label(
+            dialog,
+            text="Enter your Windows Product Key:",
+            font=('Segoe UI', 11),
+            bg=self.theme['bg'],
+            fg=self.theme.get('fg', '#EAF6FF')
+        ).pack(pady=(24, 6))
+
+        tk.Label(
+            dialog,
+            text="Format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX",
+            font=('Segoe UI', 9),
+            bg=self.theme['bg'],
+            fg=self.theme.get('task_fg', '#A8C4E0')
+        ).pack()
+
+        entry_var = tk.StringVar()
+        entry = tk.Entry(
+            dialog,
+            textvariable=entry_var,
+            width=32,
+            font=('Consolas', 13),
+            bg=self.theme.get('surface', '#162742'),
+            fg=self.theme.get('fg', '#EAF6FF'),
+            insertbackground=self.theme.get('fg', '#EAF6FF'),
+            relief=tk.FLAT,
+            justify='center'
+        )
+        entry.pack(pady=10, ipady=4)
+        entry.focus_set()
+
+        def on_activate():
+            key = entry_var.get().strip().upper()
+            if len(key) >= 5:
+                result[0] = key
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg=self.theme['bg'])
+        btn_frame.pack(pady=(0, 16))
+        tk.Button(
+            btn_frame, text="Activate", command=on_activate,
+            bg=self.theme.get('primary', '#7FE4FF'), fg='#000000',
+            font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, padx=18, pady=4
+        ).pack(side=tk.LEFT, padx=8)
+        tk.Button(
+            btn_frame, text="Cancel", command=on_cancel,
+            bg=self.theme.get('surface_alt', '#1C3256'), fg=self.theme.get('fg', '#EAF6FF'),
+            font=('Segoe UI', 10), relief=tk.FLAT, padx=18, pady=4
+        ).pack(side=tk.LEFT, padx=8)
+
+        # Allow Enter/Escape shortcuts
+        dialog.bind("<Return>", lambda e: on_activate())
+        dialog.bind("<Escape>", lambda e: on_cancel())
+
+        self.root.wait_window(dialog)
+        return result[0]
+
+    def run_activate_windows(self):
+        """Runs slmgr.vbs /ipk, /ato, /xpr in sequence to activate Windows."""
+        label = "Activate Windows/Change Product Key"
+        key = getattr(self, '_windows_product_key', None)
+        if not key:
+            self.queue.put(f"PROGRESS:{label}:No product key provided \u2014 skipping.")
+            return
+
+        slmgr = r"C:\Windows\System32\slmgr.vbs"
+
+        # ── Step 1: Install product key (/ipk) ─────────────────────────────────
+        self.queue.put(f"PROGRESS:{label}:Step 1/3 \u2014 Installing product key...")
+        try:
+            r = subprocess.run(
+                ["cscript", "//nologo", slmgr, "/ipk", key],
+                capture_output=True, text=True, timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+            output = (r.stdout + r.stderr).strip()
+            if output:
+                self.queue.put(f"PROGRESS:{label}:  {output}")
+            if r.returncode != 0 or "error" in output.lower():
+                self.queue.put(f"PROGRESS:{label}:ERROR \u2014 Product key installation failed.")
+                self.queue.put(f"PROGRESS:{label}:  Verify the key is correct and try again.")
+                return
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{label}:ERROR \u2014 /ipk command failed: {e}")
+            return
+
+        # ── Step 2: Activate online (/ato) ─────────────────────────────────────
+        self.queue.put(f"PROGRESS:{label}:Step 2/3 \u2014 Activating Windows online...")
+        try:
+            r = subprocess.run(
+                ["cscript", "//nologo", slmgr, "/ato"],
+                capture_output=True, text=True, timeout=60,
+                creationflags=CREATE_NO_WINDOW
+            )
+            output = (r.stdout + r.stderr).strip()
+            if output:
+                self.queue.put(f"PROGRESS:{label}:  {output}")
+            if r.returncode != 0 or "error" in output.lower():
+                self.queue.put(f"PROGRESS:{label}:ERROR \u2014 Online activation failed.")
+                self.queue.put(f"PROGRESS:{label}:  Ensure the machine is connected to the internet.")
+                return
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{label}:ERROR \u2014 /ato command failed: {e}")
+            return
+
+        # ── Step 3: Check activation / expiry status (/xpr) ───────────────────
+        self.queue.put(f"PROGRESS:{label}:Step 3/3 \u2014 Checking activation status...")
+        try:
+            r = subprocess.run(
+                ["cscript", "//nologo", slmgr, "/xpr"],
+                capture_output=True, text=True, timeout=30,
+                creationflags=CREATE_NO_WINDOW
+            )
+            output = (r.stdout + r.stderr).strip()
+            if output:
+                self.queue.put(f"PROGRESS:{label}:  {output}")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:{label}:Could not retrieve activation status: {e}")
+
+        self.queue.put(f"PROGRESS:{label}:Windows activation completed successfully! \u2713")
+
+
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="WinMend")
+    parser.add_argument("--clean-temp", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable cleaning temporary files (1/0)")
+    parser.add_argument("--disk-cleanup", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable disk cleanup (1/0)")
+    parser.add_argument("--disable-fast-startup", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable disabling fast startup (1/0)")
+    parser.add_argument("--update-apps", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable updating apps (1/0)")
+    parser.add_argument("--windows-updates", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable Windows updates (1/0)")
+    parser.add_argument("--device-firmware", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable device firmware updates (1/0)")
+    parser.add_argument("--repair-system", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable system repair (1/0)")
+    parser.add_argument("--chk-dsk", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable chkdsk C: /r (1/0)")
+    parser.add_argument("--windows-adjustments", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable Windows adjustments (1/0)")
+    parser.add_argument("--flush-dns", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable flush DNS and renew IP (1/0)")
+    parser.add_argument("--ipconfig-all", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable display IP configuration (1/0)")
+    parser.add_argument("--change-dns", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable change DNS to 1.1.1.1 and 8.8.8.8 (1/0)")
+    parser.add_argument("--autopilot-csv", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable AutoPilot CSV creation (1/0)")
+    parser.add_argument("--pc-report", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable PC Report generation (1/0)")
+    parser.add_argument("--chris-titus-utility", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable Chris Titus Windows Utility (1/0)")
+    parser.add_argument("--stop-background-apps", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable stopping background apps (1/0)")
+    parser.add_argument("--disable-startup-apps", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable disabling startup apps except OneDrive (1/0)")
+    parser.add_argument("--debloat-windows", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable running Win11Debloat (1/0)")
+    return parser.parse_args()
+
+
+def is_frozen():
+    """Check if the application is running as a frozen executable"""
+    return getattr(sys, 'frozen', False)
+
+
+def restart_as_admin():
+    """Restart the application with administrator privileges"""
+    try:
+        # Get the path to the current executable
+        executable = sys.executable
+
+        # Build command line arguments
+        if is_frozen():
+            # Running as a frozen executable
+            args = sys.argv[1:]  # Skip the first argument (the executable path)
+        else:
+            # Running as a script
+            args = [os.path.abspath(sys.argv[0])]  # The script path
+            if len(sys.argv) > 1:
+                args.extend(sys.argv[1:])
+
+        # Sanitize arguments
+        safe_args = SecurityUtils.sanitize_command_args(args)
+
+        # Quote any argument that contains spaces so the path is passed correctly
+        # (e.g. "Windows System Cleaner.py" has a space and must be wrapped in quotes)
+        quoted_args = [f'"{a}"' if ' ' in a else a for a in safe_args]
+
+        # Start new process with admin rights
+        # Using ShellExecuteW with runas verb to trigger UAC
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None,  # hwnd
+            "runas",  # verb
+            executable,  # file to execute
+            " ".join(quoted_args),  # parameters (properly quoted)
+            None,  # current directory
+            1  # show command (SW_SHOWNORMAL)
+        )
+
+        # Check if ShellExecuteW succeeded (returns >32 on success)
+        if result <= 32:
+            messagebox.showerror("Error", f"Failed to restart as administrator. Error code: {result}")
+            return False
+
+        # Exit the current instance
+        sys.exit(0)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to restart as administrator: {str(e)}")
+        return False
+
+
+def main():
+    try:
+        startup_log("Main function started")
+
+        # Check if we're in a relaunch process
+        if '--relaunched' in sys.argv:
+            startup_log("Application relaunched with pythonw.exe")
+
+        # Check if running as admin, if not restart
+        if not ctypes.windll.shell32.IsUserAnAdmin():
+            startup_log("Not running as admin, restarting with admin privileges")
+            if not restart_as_admin():
+                startup_log("Failed to restart as admin, continuing without admin rights")
+                # Continue without admin rights but warn user
+                messagebox.showwarning(
+                    "Administrator Rights Required",
+                    "This application requires administrator privileges to function properly.\n"
+                    "Some features may not work correctly.\n\n"
+                    "Please restart the application as administrator."
+                )
+
+        startup_log("Running with admin privileges")
+
+        # Parse command line arguments
+        args = parse_args()
+
+        # Theme is always Holographic
+        theme = HOLOGRAPHIC_THEME
+        theme_name = 'holographic'
+        dark_mode = True
+
+        # Load font size preference
+        font_size_factor = 1.0
+        try:
+            _fp2 = _get_pref_path("font_size_pref.json")
+            if os.path.exists(_fp2):
+                with open(_fp2, "r") as f:
+                    pref = json.load(f)
+                    font_size_factor = pref.get("font_size_factor", 1.0)
+        except (json.JSONDecodeError, OSError, KeyError):
+            pass
+
+        # Create the main window
+        try:
+            root = tk.Tk()
+            startup_log("Main window created successfully")
+        except Exception as e:
+            startup_log(f"Failed to create main window: {str(e)}")
+            messagebox.showerror("GUI Error", f"Failed to create GUI window:\n{str(e)}")
+            sys.exit(1)
+
+        startup_log("Creating main application")
+        app = SystemCleanerGUI(root, theme)
+        app.current_theme = theme_name
+        app.dark_mode_var.set(dark_mode)
+        app.font_size_factor = font_size_factor
+        startup_log("Main application created successfully")
+
+        # Apply command line arguments if provided
+        if args:
+            app.clean_temp.set(args.clean_temp)
+            app.disk_cleanup.set(args.disk_cleanup)
+            app.disable_fast_startup.set(args.disable_fast_startup)
+            app.update_apps.set(args.update_apps)
+            app.windows_updates.set(args.windows_updates)
+            app.device_firmware.set(args.device_firmware)
+            app.repair_system.set(args.repair_system)
+            app.chk_dsk.set(args.chk_dsk)
+            app.windows_adjustments.set(args.windows_adjustments)
+            app.flush_dns.set(args.flush_dns)
+            app.ipconfig_all.set(args.ipconfig_all)
+            app.change_dns.set(args.change_dns)
+            app.autopilot_csv.set(args.autopilot_csv)
+            app.pc_report.set(args.pc_report)
+            app.chris_titus_utility.set(args.chris_titus_utility)
+            app.stop_background_apps_var.set(args.stop_background_apps)
+            app.disable_startup_apps_var.set(args.disable_startup_apps)
+            app.debloat_windows.set(args.debloat_windows)
+
+        startup_log("Main application created")
+
+        # Start the main loop
+        startup_log("Starting main loop")
+        root.mainloop()
+        startup_log("Main loop ended")
+
+    except Exception as e:
+        startup_log(f"Application error: {str(e)}")
+        startup_log(f"Traceback: {traceback.format_exc()}")
+        print(f"Error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        messagebox.showerror("Application Error", f"An error occurred: {str(e)}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+
