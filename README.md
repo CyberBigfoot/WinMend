@@ -4,8 +4,8 @@
 
 ### A professional all-in-one Windows maintenance, repair, and diagnostic toolkit
 
-[![Version](https://img.shields.io/badge/Version-1.5-0078D4?style=for-the-badge)](https://github.com/GrantEawood/Windows-System-Cleaner/releases)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/GrantEawood/Windows-System-Cleaner)
+[![Version](https://img.shields.io/badge/Version-1.5-0078D4?style=for-the-badge)](https://github.com/GrantEawood/WinMend/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/GrantEawood/WinMend)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 [![Support](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/onlycyber)
@@ -26,13 +26,11 @@ From one-click junk file removal to advanced BSOD analysis, network stack remedi
 
 ## Screenshots
 
-<img width="1189" height="1045" alt="First Screenshot" src="https://github.com/user-attachments/assets/0d6c4ec5-3026-4bdc-bd1f-690d2391072b" />
+<img width="1368" height="720" alt="Screenshot 2026-03-23 134144" src="https://github.com/user-attachments/assets/89f3e0d2-8f59-4afd-a3ad-774566d81183" />
 
 <img width="1331" height="676" alt="Screenshot 2026-03-23 134236" src="https://github.com/user-attachments/assets/db48eff0-f472-49e8-a199-a70c13c3e730" />
 
-<img width="1179" height="942" alt="Last screenshot" src="https://github.com/user-attachments/assets/fa4e180b-64c6-4950-bf12-f518904cc47d" />
-
-
+<img width="1169" height="548" alt="Screenshot 2026-03-23 134505" src="https://github.com/user-attachments/assets/16bc041c-bf4b-446c-8450-3d4df5a76ce6" />
 
 ---
 
@@ -53,6 +51,7 @@ From one-click junk file removal to advanced BSOD analysis, network stack remedi
 - [Security & Safety](#security--safety)
 - [Requirements](#requirements)
 - [License](#license)
+- [Antivirus False Positive Notice](#antivirus-false-positive-notice)
 - [Disclaimer](#disclaimer)
 
 ---
@@ -191,8 +190,8 @@ The Smart Fix search bar lets you describe a Windows problem in plain English an
 | Task | Description |
 |---|---|
 | Chris Titus Windows Utility | Integrated launcher for the popular WinUtil all-in-one toolkit |
-| Debloat Windows | Removes pre-installed bloatware and telemetry services |
-| O&O ShutUp10 | Launches the O&O ShutUp10++ privacy hardening tool |
+| Debloat Windows | Silently removes 91 pre-installed bloatware apps (no download, no system tweaks) |
+| Debloat Windows Extreme | Removes 139 apps including optional, unsafe, and OEM software — use with caution |
 | Sysinternals Autoruns | Manage every Windows autostart location in one place |
 | Sysinternals Process Explorer | Advanced task manager for identifying rogue processes |
 | Storage Analyzer | Launches the built-in professional disk and drive scanner |
@@ -281,7 +280,7 @@ A persistent **Activity Log** runs at the bottom of the screen, logging every ac
 
 ### Option 1 — Standalone Executable (Recommended)
 
-Download the latest `WinMend.exe` from the [Releases](https://github.com/GrantEawood/Windows-System-Cleaner/releases) page.
+Download the latest `WinMend.exe` from the [Releases](https://github.com/GrantEawood/WinMend/releases) page.
 
 > Right-click → **Run as Administrator**, or the app will automatically request UAC elevation.
 
@@ -297,8 +296,8 @@ No Python installation or additional dependencies required.
 
 **1. Clone the repository**
 ```bash
-git clone https://github.com/GrantEawood/Windows-System-Cleaner.git
-cd Windows-System-Cleaner
+git clone https://github.com/GrantEawood/WinMend.git
+cd WinMend
 ```
 
 **2. Install dependencies**
@@ -346,7 +345,7 @@ pyinstaller WinMend.spec
 
 The final executable will be in the `dist/` folder.
 
-> **Antivirus note:** PyInstaller-built executables are commonly flagged by antivirus software as a false positive. This is expected behavior. You can whitelist the file or submit it to your AV vendor for review.
+> **Antivirus note:** See the [Antivirus False Positive Notice](#antivirus-false-positive-notice) section below for a full explanation of why WinMend may be flagged and how to resolve it.
 
 ---
 
@@ -418,6 +417,77 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
+## Antivirus False Positive Notice
+
+> [!WARNING]
+> **WinMend may be flagged as malware or a potentially unwanted program (PUP) by antivirus software. This is a known false positive.**
+
+### Why does this happen?
+
+WinMend is a legitimate Windows maintenance tool. However, antivirus engines use behavioral heuristics — they flag *what a program does*, not *what it intends to do*. WinMend performs many of the same low-level operations that malware uses, by design:
+
+| Operation | Why WinMend does it | Why AV flags it |
+|---|---|---|
+| Registry modification | Disable gaming overlays, manage startup items, apply performance tweaks | Malware modifies registry for persistence |
+| Mass file deletion | Remove temp files, browser cache, bloatware | Ransomware deletes or encrypts files |
+| PowerShell execution | Run system repair and diagnostic commands | Malware uses PowerShell for execution |
+| UAC elevation request | Requires admin rights for system-level tasks | Privilege escalation is a malware technique |
+| Removing AppX packages | Uninstall bloatware via `Remove-AppxPackage` | Malware may remove security software |
+| Download & run tools | Sysinternals, BlueScreenView, Chris Titus Utility | Classic trojan dropper pattern |
+| PyInstaller packaging | Single-file executable distribution | Many malware samples use PyInstaller |
+
+### Known detections (false positives)
+
+The following vendors have flagged WinMend as a false positive. These are **incorrect detections**:
+
+| Vendor | Detection Name |
+|---|---|
+| Microsoft Defender | `Trojan:Win32/Wacatac.C!ml` |
+| CrowdStrike Falcon | `Win/malicious_confidence_90% (D)` |
+| Elastic | Malicious (moderate confidence) |
+| Arctic Wolf | Unsafe |
+| Bkav Pro | `W64.AIDetectMalware` |
+| SecureAge | Malicious |
+
+> These detections are driven by ML/heuristic classifiers reacting to system-level behavior — not actual malicious code.
+
+### What has been done to reduce detections
+
+- `ExecutionPolicy Bypass` replaced with `RemoteSigned` throughout
+- Raw `CREATE_NO_WINDOW` hex flag (`0x08000000`) replaced with the standard `subprocess.STARTUPINFO` Windows API approach
+- UPX compression disabled in PyInstaller build
+- All debloat functionality is embedded locally — no remote script execution
+- User confirmation dialogs shown before any external tool is downloaded
+- No telemetry, no data collection, no remote connections except user-initiated tool downloads
+
+### How to resolve the false positive
+
+**Option 1 — Add an exclusion in your AV software**
+
+Add the `WinMend.exe` file or its folder to your antivirus exclusion/whitelist list. Refer to your AV vendor's documentation for steps.
+
+**Option 2 — Submit a false positive report**
+
+Most vendors accept false positive submissions. Use your AV vendor's portal and provide:
+- The `WinMend.exe` file
+- The SHA256 hash of the file (`certutil -hashfile WinMend.exe SHA256`)
+- A brief description: *"WinMend is an open-source Windows maintenance tool. Source available at [GitHub URL]. This detection is a false positive triggered by legitimate system maintenance operations."*
+
+**Common submission portals:**
+- Microsoft: [Microsoft Security Intelligence](https://www.microsoft.com/en-us/wdsi/filesubmission)
+- CrowdStrike: Contact via your Falcon console
+- Elastic: [Elastic false positive form](https://discuss.elastic.co/c/security/)
+
+**Option 3 — Build from source**
+
+Building from source yourself gives you full transparency and a unique binary hash less likely to carry prior detections. See [Building from Source](#building-from-source).
+
+### Source code transparency
+
+WinMend is fully open source. Every operation the tool performs is visible in `WinMend.py`. There are no obfuscated commands, no encoded payloads, no network beaconing, and no data exfiltration. If you or your security team want to audit the code before running it, the full source is available in this repository.
+
+---
+
 ## Disclaimer
 
 WinMend provides powerful, low-level access to Windows system components. While every effort has been made to ensure safe operation:
@@ -425,150 +495,12 @@ WinMend provides powerful, low-level access to Windows system components. While 
 - Always **back up important data** before running disk repairs, system file operations, or large-scale deletions
 - Use the **Create Restore Point (Guardrail)** task before running batch operations
 - Some tasks (CHKDSK, SFC, DISM) may take a significant amount of time depending on drive size and system state
+- **Debloat Windows Extreme** removes system components that cannot be easily reinstalled — read the tooltip carefully before using it
 - The developer is not responsible for data loss or system instability resulting from use of this software
 
 **Use at your own risk.**
 
 ---
-# Privacy Policy
-
-**Application:** WinMend  
-**Version:** 1.5  
-**Last Updated:** 2026-04-13
-
----
-
-## Overview
-
-WinMend is a local-only Windows system maintenance and diagnostic toolkit. It does **not** collect, transmit, or share any user data with external servers. All operations are performed entirely on your local machine.
-
----
-
-## Data Collection
-
-**WinMend does not collect, transmit, or sell any personal data.**
-
-There are no analytics, telemetry, crash reporting, or phone-home mechanisms in this application. No data is ever sent to the developer, third parties, or any remote server.
-
----
-
-## Local Data Storage
-
-WinMend stores minimal preference data locally on your machine:
-
-| File | Location | Contents | Purpose |
-|---|---|---|---|
-| `font_size_pref.json` | `%APPDATA%\WinMend\` | Font size factor (number) | Remembers your UI scaling preference |
-| `theme_pref.json` | `%APPDATA%\WinMend\` | Theme name (string) | Remembers your color scheme preference |
-
-These files contain **no personally identifiable information (PII)**. They can be deleted at any time without affecting application functionality.
-
----
-
-## PC Report Generation
-
-When you use the **Generate PC Report** feature, WinMend collects a comprehensive snapshot of your system for diagnostic purposes. This report is saved **locally only** as `PC_Report.html` and is never transmitted externally.
-
-The report may include:
-
-- Computer name and OS version
-- CPU, GPU, RAM, and storage hardware details
-- Installed applications and versions
-- Network adapter configuration and IP addresses
-- Running processes and services
-- Startup programs and scheduled tasks
-- Windows Defender and firewall status
-- User accounts on the system
-- Environment variables
-- Battery and thermal information
-- Windows Update status
-
-> **Important:** The PC Report contains sensitive system information. Exercise caution when sharing this file, as it may include usernames, network configuration, environment variables (which could contain API keys or tokens), and running process details.
-
----
-
-## Wi-Fi Password Export
-
-The **Export Wi-Fi Passwords** feature extracts saved Wi-Fi network names and passwords from Windows and saves them to a plaintext file (`WiFi_Passwords_Export.txt`) on your Desktop.
-
-- This feature requires explicit user confirmation before execution
-- The exported file contains **plaintext credentials**
-- The file is stored locally only and is never transmitted
-- You are responsible for securing or deleting this file after use
-
----
-
-## Network Activity
-
-WinMend makes **no outbound connections** for data collection or telemetry. The only network activity occurs when you explicitly initiate the download of external tools:
-
-| Tool | Source | When Downloaded |
-|---|---|---|
-| O&O ShutUp10 | `dl5.oo-software.com` | User clicks "O&O ShutUp10++" |
-| Win11Debloat | `debloat.raphi.re` | User clicks "Debloat Windows" |
-| NirSoft BlueScreenView | `nirsoft.net` | User clicks "BSOD Analyzer" |
-| Sysinternals Autoruns | `live.sysinternals.com` | User clicks "Autoruns" |
-| Sysinternals Process Explorer | `live.sysinternals.com` | User clicks "Process Explorer" |
-| Chris Titus WinUtil | `christitus.com` | User clicks "Chris Titus Utility" |
-
-These are all well-known, trusted system utilities. No user data is sent during these downloads.
-
----
-
-## Windows System Commands
-
-Many WinMend tasks execute built-in Windows commands and PowerShell scripts (e.g., `sfc /scannow`, `DISM`, `chkdsk`, `netsh`, `winget`). These commands interact with your local system only and are the same commands available through the Windows command prompt.
-
----
-
-## Registry Access
-
-WinMend reads and writes Windows Registry keys for specific system optimization tasks (e.g., disabling fast startup, configuring Edge performance settings, managing Storage Sense). All registry modifications are to well-documented system settings and require explicit user initiation.
-
----
-
-## Debug Output
-
-WinMend contains a small number of `print()` statements for developer diagnostics. These output to the console (stdout) only when the application is launched from a terminal. They contain no sensitive or personal information and do not write to any log files.
-
----
-
-## Third-Party Services
-
-WinMend does **not** integrate with any third-party analytics, telemetry, or crash reporting services. There is no Sentry, Google Analytics, Mixpanel, Datadog, or any similar service present in the application.
-
----
-
-## Children's Privacy
-
-WinMend does not knowingly collect any data from anyone, including children under 13. Since no data is collected or transmitted, COPPA compliance concerns do not apply.
-
----
-
-## Data Retention
-
-- **Preference files** persist until manually deleted or the application is uninstalled
-- **PC Reports** persist as local HTML files until you delete them
-- **Wi-Fi exports** persist as local text files until you delete them
-- No data is retained on any external server
-
----
-
-## Open Source Verification
-
-WinMend is open source under the MIT License. The complete source code is available for review at [github.com/CyberBigfoot/WinMend](https://github.com/CyberBigfoot/WinMend). You can verify every claim in this privacy policy by inspecting the source code directly.
-
----
-
-## Changes to This Policy
-
-Any changes to this privacy policy will be reflected in this document and committed to the repository with a clear changelog.
-
----
-
-## Contact
-
-For questions or concerns about this privacy policy, please open an issue on the [GitHub repository](https://github.com/CyberBigfoot/WinMend/issues).
 
 <div align="center">
 
