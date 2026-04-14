@@ -1,9 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 from PyInstaller.utils.hooks import collect_data_files
 
 # Pull in CustomTkinter's bundled themes and images automatically
 ctk_datas = collect_data_files('customtkinter')
+build_mode = os.environ.get('WINMEND_BUILD_MODE', 'onefile').strip().lower()
+if build_mode not in {'onefile', 'onedir'}:
+    raise ValueError("WINMEND_BUILD_MODE must be 'onefile' or 'onedir'")
 
 a = Analysis(
     ['WinMend.py'],
@@ -12,8 +16,6 @@ a = Analysis(
     datas=[
         # Fonts
         ('Chopsic.otf', '.'),
-        ('ThisAppeal-FreeDemo.ttf', '.'),
-        ('Evogria.otf', '.'),
         ('Exo2-Regular.otf', '.'),
         ('Codec-Cold-Bold-trial.ttf', '.'),
         ('Microsport Bold.ttf', '.'),
@@ -32,25 +34,58 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name='WinMend',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    uac_admin=True,
-    icon=['icon.ico'],
-)
+if build_mode == 'onedir':
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name='WinMend',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        uac_admin=True,
+        icon=['icon.ico'],
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name='WinMend',
+    )
+else:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        name='WinMend',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        uac_admin=True,
+        icon=['icon.ico'],
+    )
