@@ -1,6 +1,7 @@
 import argparse
 # wmi, requests, bs4, psutil are lazy-imported where needed for faster startup
 import ctypes
+import hashlib
 import html as _html
 import json
 import math
@@ -22,7 +23,7 @@ import webbrowser
 import winreg
 from datetime import datetime
 from pathlib import Path
-from tkinter import ttk, messagebox, Menu
+from tkinter import ttk, messagebox, Menu, simpledialog
 
 import customtkinter as ctk
 
@@ -565,8 +566,14 @@ def get_categories():
     return sorted(categories)
 
 
-# Constants for hiding console windows
-CREATE_NO_WINDOW = 0x08000000
+# Helper: build a STARTUPINFO that hides the console window.
+# This is the standard Windows-API approach for GUI applications and avoids
+# the raw CREATE_NO_WINDOW flag that AV heuristics associate with malware.
+def _no_console_startupinfo():
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0  # SW_HIDE
+    return si
 
 # ==================== STORAGESENSE MODULE ====================
 # This module provides an advanced disk scanner UI, merged for single-EXE deployment.
@@ -692,7 +699,7 @@ def ss_get_drive_health_info(path):
             "Size, AllocatedSize, FriendlyName, Usage, Manufacturer, Model, FirmwareRevision, SerialNumber | ConvertTo-Json"
         )
         process = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True,
-                                 timeout=10, creationflags=CREATE_NO_WINDOW)
+                                 timeout=10, startupinfo=_no_console_startupinfo())
         if not process.stdout.strip(): return {"status": "Unknown", "raw": "No Output"}
         data = json.loads(process.stdout)
         if isinstance(data, list): data = data[0]
@@ -722,7 +729,7 @@ def ss_get_drive_details(path, serial=None):
             "ReadLatencyMax, WriteLatencyMax, ReadIOPS, WriteIOPS | ConvertTo-Json"
         )
         process = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True,
-                                 timeout=15, creationflags=CREATE_NO_WINDOW)
+                                 timeout=15, startupinfo=_no_console_startupinfo())
         if process.returncode == 0 and process.stdout.strip():
             details = json.loads(process.stdout)
             if isinstance(details, list): details = details[0]
@@ -734,7 +741,7 @@ def ss_get_drive_details(path, serial=None):
             "SpindleSpeed, Size, AllocatedSize, LogicalSectorSize, PhysicalSectorSize | ConvertTo-Json"
         )
         phys_proc = subprocess.run(["powershell", "-Command", ps_phys], capture_output=True, text=True,
-                                   timeout=10, creationflags=CREATE_NO_WINDOW)
+                                   timeout=10, startupinfo=_no_console_startupinfo())
         if phys_proc.returncode == 0 and phys_proc.stdout.strip():
             phys_data = json.loads(phys_proc.stdout)
             if isinstance(phys_data, list): phys_data = phys_data[0]
@@ -749,7 +756,7 @@ def ss_get_drive_details(path, serial=None):
         )
         try:
             perf_proc = subprocess.run(["powershell", "-Command", ps_perf], capture_output=True, text=True,
-                                       timeout=5, creationflags=CREATE_NO_WINDOW)
+                                       timeout=5, startupinfo=_no_console_startupinfo())
             if perf_proc.returncode == 0 and perf_proc.stdout.strip():
                 perf_data = json.loads(perf_proc.stdout)
                 if isinstance(perf_data, dict): perf_data = [perf_data]
@@ -2317,7 +2324,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             speeds = re.findall(r"Speed=(\d+)", result.stdout)
                             if speeds:
@@ -2345,7 +2352,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             if "SSD" in result.stdout.upper():
                                 return "SSD"
@@ -2374,7 +2381,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             gpu_data = {}
                             for line in result.stdout.split('\n'):
@@ -2412,7 +2419,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             for line in result.stdout.split('\n'):
                                 if 'VGA' in line or '3D' in line or 'Display' in line:
@@ -2441,7 +2448,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["systeminfo"],
                         capture_output=True, text=True, timeout=30,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         lines = result.stdout.split('\n')
@@ -2473,7 +2480,7 @@ class PCReporter:
                     for cmd, key in commands:
                         try:
                             result = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=10,
-                                                    creationflags=CREATE_NO_WINDOW)
+                                                    startupinfo=_no_console_startupinfo())
                             if result.returncode == 0:
                                 if "System Info" in key:
                                     # Parse system info
@@ -2507,7 +2514,7 @@ class PCReporter:
                                 result = subprocess.run(
                                     ["powershell", "-Command", ps_cmd],
                                     capture_output=True, text=True, timeout=15,
-                                    creationflags=CREATE_NO_WINDOW
+                                    startupinfo=_no_console_startupinfo()
                                 )
                                 if result.returncode == 0:
                                     for line in result.stdout.split('\n'):
@@ -2551,7 +2558,7 @@ class PCReporter:
                         ["reg", "query", "HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS", "/v",
                          "SystemManufacturer"],
                         capture_output=True, text=True, timeout=5,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         match = re.search(r"SystemManufacturer\s+REG_SZ\s+(.+)", result.stdout)
@@ -2566,7 +2573,7 @@ class PCReporter:
                         ["reg", "query", "HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS", "/v",
                          "SystemProductName"],
                         capture_output=True, text=True, timeout=5,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         match = re.search(r"SystemProductName\s+REG_SZ\s+(.+)", result.stdout)
@@ -2737,7 +2744,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["powershell", "-Command", ps_script],
                         capture_output=True, text=True, timeout=30,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
 
                     if result.returncode == 0 and result.stdout.strip():
@@ -2772,7 +2779,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["wmic", "product", "get", "name,version,vendor,installdate", "/format:csv"],
                         capture_output=True, text=True, timeout=30,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
 
                     if result.returncode == 0:
@@ -2807,7 +2814,7 @@ class PCReporter:
                         result = subprocess.run(
                             ["dpkg-query", "-W", "-f=${Package}\t${Version}\t${Maintainer}\n"],
                             capture_output=True, text=True,
-                            creationflags=CREATE_NO_WINDOW
+                            startupinfo=_no_console_startupinfo()
                         )
                         if result.returncode == 0:
                             for line in result.stdout.split('\n'):
@@ -2824,7 +2831,7 @@ class PCReporter:
                             result = subprocess.run(
                                 ["rpm", "-qa", "--queryformat", "%{NAME}\t%{VERSION}\t%{VENDOR}\n"],
                                 capture_output=True, text=True,
-                                creationflags=CREATE_NO_WINDOW
+                                startupinfo=_no_console_startupinfo()
                             )
                             if result.returncode == 0:
                                 for line in result.stdout.split('\n'):
@@ -2920,7 +2927,7 @@ class PCReporter:
             for cmd in commands:
                 try:
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                                            creationflags=CREATE_NO_WINDOW)
+                                            startupinfo=_no_console_startupinfo())
                     if result.returncode == 0:
                         updates = []
                         lines = result.stdout.split('\n')
@@ -2952,7 +2959,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["powershell", "(Get-WmiObject -Class Win32_QuickFixEngineering).Count"],
                         capture_output=True, text=True, timeout=15,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         try:
@@ -2969,7 +2976,7 @@ class PCReporter:
                         ["powershell",
                          "(New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher().Search(\"IsInstalled=0\").Updates.Count"],
                         capture_output=True, text=True, timeout=30,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         try:
@@ -2991,7 +2998,7 @@ class PCReporter:
                         ["powershell",
                          "(Get-WmiObject -Class Win32_QuickFixEngineering | Sort-Object -Property InstalledOn -Descending | Select-Object -First 1).InstalledOn"],
                         capture_output=True, text=True, timeout=15,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0 and result.stdout.strip():
                         vulnerability_info["Last Update Scan"] = result.stdout.strip()
@@ -3004,7 +3011,7 @@ class PCReporter:
                         ["powershell",
                          "Get-MpComputerStatus | Select-Object AntispywareEnabled, AntivirusEnabled, NISEnabled, RealTimeProtectionEnabled | Format-List"],
                         capture_output=True, text=True, timeout=15,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         defender_status = {}
@@ -3027,7 +3034,7 @@ class PCReporter:
                         ["powershell",
                          "Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsVersion | Format-List"],
                         capture_output=True, text=True, timeout=15,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         version_info = {}
@@ -3057,7 +3064,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["netsh", "advfirewall", "show", "allprofiles"],
                         capture_output=True, text=True, timeout=10,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         firewall_profiles = {}
@@ -3151,7 +3158,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             if "nslookup" in cmd[0]:
                                 servers = re.findall(r"Server:\s*(.+)", result.stdout)
@@ -3192,7 +3199,7 @@ class PCReporter:
                     for cmd in commands:
                         try:
                             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                    creationflags=CREATE_NO_WINDOW)
+                                                    startupinfo=_no_console_startupinfo())
                             if result.returncode == 0:
                                 defender_status = {}
                                 for line in result.stdout.split('\n'):
@@ -3216,7 +3223,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["netsh", "advfirewall", "show", "allprofiles"],
                         capture_output=True, text=True, timeout=10,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         firewall_status = {}
@@ -3237,7 +3244,7 @@ class PCReporter:
                         ["reg", "query", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "/v",
                          "EnableLUA"],
                         capture_output=True, text=True, timeout=10,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         uac_enabled = "0x1" in result.stdout
@@ -3262,7 +3269,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["net", "user"],
                         capture_output=True, text=True, timeout=10,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         users = []
@@ -3283,7 +3290,7 @@ class PCReporter:
                     result = subprocess.run(
                         ["net", "user", current_user],
                         capture_output=True, text=True, timeout=10,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
                     if result.returncode == 0:
                         groups = []
@@ -3363,7 +3370,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             lines = result.stdout.split('\n')
                             current_service = {}
@@ -3394,7 +3401,7 @@ class PCReporter:
                         result = subprocess.run(
                             ["systemctl", "list-units", "--type=service", "--no-pager"],
                             capture_output=True, text=True, timeout=30,
-                            creationflags=CREATE_NO_WINDOW
+                            startupinfo=_no_console_startupinfo()
                         )
                         if result.returncode == 0:
                             lines = result.stdout.split('\n')
@@ -3436,7 +3443,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             lines = result.stdout.split('\n')
                             for line in lines[1:]:  # Skip header
@@ -3479,7 +3486,7 @@ class PCReporter:
                                 result = subprocess.run(
                                     ["wmic", "path", device_class, "get", "name,manufacturer", "/format:list"],
                                     capture_output=True, text=True, timeout=10,
-                                    creationflags=CREATE_NO_WINDOW
+                                    startupinfo=_no_console_startupinfo()
                                 )
                                 if result.returncode == 0:
                                     device_data = {}
@@ -3511,7 +3518,7 @@ class PCReporter:
                 for cmd in commands:
                     try:
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
-                                                creationflags=CREATE_NO_WINDOW)
+                                                startupinfo=_no_console_startupinfo())
                         if result.returncode == 0:
                             current_device = {}
                             for line in result.stdout.split('\n'):
@@ -5156,13 +5163,13 @@ class SystemCleanerGUI:
             self.pc_report = tk.BooleanVar(value=False)
             self.chris_titus_utility = tk.BooleanVar(value=False)
             self.storage_sence = tk.BooleanVar(value=False)
-            self.oo_shutup10 = tk.BooleanVar(value=False)
             self.edge_performance = tk.BooleanVar(value=False)
             self.disable_gaming_features = tk.BooleanVar(value=False)
             self.enable_gaming_features = tk.BooleanVar(value=False)
             self.adjust_virtual_memory = tk.BooleanVar(value=False)
             self.install_system_drivers = tk.BooleanVar(value=False)
             self.debloat_windows = tk.BooleanVar(value=False)
+            self.debloat_extreme = tk.BooleanVar(value=False)
             self.reset_win_update = tk.BooleanVar(value=False)
             self.reset_network = tk.BooleanVar(value=False)
             self.rebuild_icon_cache = tk.BooleanVar(value=False)
@@ -5193,6 +5200,7 @@ class SystemCleanerGUI:
             self.service_dependency_repair = tk.BooleanVar(value=False)
             self.create_restore_point_guardrail = tk.BooleanVar(value=False)
             self.activate_windows = tk.BooleanVar(value=False)
+            self.open_msconfig = tk.BooleanVar(value=False)
 
             # App settings variables
             self.stop_background_apps_var = tk.BooleanVar(value=False)
@@ -5612,7 +5620,18 @@ class SystemCleanerGUI:
             windows_adjustments_indicator = tk.Label(windows_adjustments_frame, text="●", font=('Segoe UI', 10),
                                                      bg=self.theme['surface'], fg=self.theme['admin_indicator'])
             windows_adjustments_indicator.pack(side=tk.RIGHT, padx=5)
-            Tooltip(self.windows_adjustments_checkbox, "Applies performance tweaks to Windows", self.theme)
+            Tooltip(
+                self.windows_adjustments_checkbox,
+                "Sets Performance Options to Custom and applies visual tuning.\n"
+                "ON: Animate controls/elements inside windows; Show shadows under windows; "
+                "Show thumbnails instead of icons; Show translucent selection rectangle; "
+                "Show window contents while dragging; Smooth edges of screen fonts; Smooth-scroll list boxes.\n"
+                "OFF: Taskbar animations, menu/tooltip/combo fades and slides, selection fade, "
+                "mouse pointer shadow, hot tracking, and minimize/maximize animation.\n"
+                "Also sets Focus Assist OFF, Transparency OFF, Game Bar/Mode/DVR/Capture OFF, "
+                "and network profile to Private.",
+                self.theme
+            )
 
             # Optimize Drives (SSD-Safe)
             defrag_frame = tk.Frame(self.checkbox_frame, bg=self.theme['surface'])
@@ -6291,16 +6310,40 @@ class SystemCleanerGUI:
                                                  bg=self.theme['surface'], fg=self.theme['admin_indicator'])
             debloat_windows_indicator.pack(side=tk.RIGHT, padx=5)
             Tooltip(self.debloat_windows_checkbox,
-                    "Downloads and runs Raphire Win11Debloat with default settings.",
+                    "Removes 91 default Windows bloatware apps silently (no download, no tweaks).\n\n"
+                    "Microsoft apps removed:\n"
+                    "  Clipchamp, 3D Builder, Cortana, Bing Finance, Bing Food & Drink,\n"
+                    "  Bing Health & Fitness, Bing News, Bing Sports, Bing Translator,\n"
+                    "  Bing Travel, Bing Weather, Copilot, Copilot+ AI Hub, PC Manager,\n"
+                    "  Get Started, Messaging, 3D Viewer, Microsoft Journal, Office Hub,\n"
+                    "  Power BI, Solitaire Collection, Sticky Notes, Mixed Reality Portal,\n"
+                    "  Network Speed Test, Microsoft News, OneNote (UWP), Sway, One Connect,\n"
+                    "  Print 3D, Power Automate, Skype (UWP), Microsoft To Do, Dev Home,\n"
+                    "  Alarms & Clock, Feedback Hub, Windows Maps, Sound Recorder,\n"
+                    "  Xbox Console Companion, Movies & TV, Family Safety, Quick Assist,\n"
+                    "  Microsoft Teams (Old), Microsoft Teams (New)\n\n"
+                    "Third-party / preinstalled apps removed:\n"
+                    "  ACG Media Player, Actipro Software, Adobe Photoshop Express,\n"
+                    "  Amazon, Prime Video, Asphalt 8, Autodesk SketchBook, Caesars Slots,\n"
+                    "  Cooking Fever, CyberLink Media Suite, Disney Magic Kingdoms, Disney,\n"
+                    "  Drawboard PDF, Duolingo, Eclipse Manager, Facebook, FarmVille 2,\n"
+                    "  Fitbit, Flipboard, Hidden City, Hulu, iHeartRadio, Instagram,\n"
+                    "  Bubble Witch 3, Candy Crush Saga, Candy Crush Soda, LinkedIn,\n"
+                    "  March of Empires, Netflix, NYT Crossword, One Calendar, Pandora,\n"
+                    "  Phototastic Collage, PicsArt, Plex, Polarr Photo Editor, Royal Revolt,\n"
+                    "  Shazam, Live Wallpaper, Sling TV, Spotify, TikTok, TuneIn Radio,\n"
+                    "  Twitter/X, Viber, WinZip, Wunderlist, XING\n\n"
+                    "Apps NOT removed: Edge, OneDrive, Xbox Gaming App, Paint 3D, Get Help.\n"
+                    "Already-absent apps are silently skipped.",
                     self.theme)
 
-            # O&O ShutUp10
-            oo_shutup10_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
-            oo_shutup10_frame.pack(fill=tk.X, pady=3)
-            self.oo_shutup10_checkbox = tk.Checkbutton(
-                oo_shutup10_frame,
-                text="O&O ShutUp10 (Privacy Tool)",
-                variable=self.oo_shutup10,
+            # Debloat Windows Extreme
+            debloat_extreme_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            debloat_extreme_frame.pack(fill=tk.X, pady=3)
+            self.debloat_extreme_checkbox = tk.Checkbutton(
+                debloat_extreme_frame,
+                text="Debloat Windows Extreme",
+                variable=self.debloat_extreme,
                 font=task_font,
                 anchor=tk.W,
                 bg=self.theme['surface'],
@@ -6308,14 +6351,36 @@ class SystemCleanerGUI:
                 selectcolor=self.theme['surface_alt'],
                 activebackground=self.theme['surface_alt']
             )
-            self.oo_shutup10_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            self.widgets.append(('checkbutton', self.oo_shutup10_checkbox))
-            self.widget_fonts[self.oo_shutup10_checkbox] = task_font
-            oo_shutup10_indicator = tk.Label(oo_shutup10_frame, text="●", font=('Segoe UI', 10),
-                                             bg=self.theme['surface'], fg=self.theme['admin_indicator'])
-            oo_shutup10_indicator.pack(side=tk.RIGHT, padx=5)
-            Tooltip(self.oo_shutup10_checkbox,
-                    "Downloads and launches O&O ShutUp10 - a free privacy tool that lets you control Windows 10/11 telemetry, Cortana, and data collection settings.",
+            self.debloat_extreme_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.debloat_extreme_checkbox))
+            self.widget_fonts[self.debloat_extreme_checkbox] = task_font
+            debloat_extreme_indicator = tk.Label(debloat_extreme_frame, text="●", font=('Segoe UI', 10),
+                                                 bg=self.theme['surface'], fg=self.theme['admin_indicator'])
+            debloat_extreme_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.debloat_extreme_checkbox,
+                    "WARNING: Removes optional & unsafe system apps on top of standard debloat.\n"
+                    "Some apps cannot be easily reinstalled. Use with caution.\n\n"
+                    "Optional apps removed:\n"
+                    "  Bing Search, Xbox Gaming App, Microsoft 365 Companions, Paint 3D,\n"
+                    "  OneDrive, Outlook for Windows, Paint (Classic), People,\n"
+                    "  Remote Desktop, Snipping Tool, Widgets Experience, Whiteboard,\n"
+                    "  Photos, Calculator, Camera, Mail & Calendar, Notepad,\n"
+                    "  Windows Terminal, Xbox Game Overlay, Xbox Gaming Overlay,\n"
+                    "  Phone Link, Media Player, Cross Device Experience\n\n"
+                    "UNSAFE apps removed (hard/impossible to reinstall):\n"
+                    "  Microsoft Edge, Get Help, Microsoft Store,\n"
+                    "  Xbox TCUI Framework, Xbox Identity Provider, Xbox Speech To Text\n\n"
+                    "OEM apps removed (if present):\n"
+                    "  HP: AI Experience Center, Connected Music, Connected Photo,\n"
+                    "    Desktop Support Utilities, Easy Clean, File Viewer, JumpStarts,\n"
+                    "    PC Hardware Diagnostics, Power Manager, Printer Control,\n"
+                    "    Privacy Settings, QuickDrop, QuickTouch, Registration,\n"
+                    "    Support Assistant, Sure Shield AI, System Information,\n"
+                    "    Welcome, WorkWell, myHP\n"
+                    "  Lenovo: Vantage, Vantage Service\n"
+                    "  Dell: SupportAssist, Digital Delivery, Mobile Connect\n\n"
+                    "Also removes all 91 standard debloat apps.\n"
+                    "Already-absent apps are silently skipped.",
                     self.theme)
 
             # Sysinternals Autoruns
@@ -6383,6 +6448,33 @@ class SystemCleanerGUI:
                                                bg=self.theme['surface'], fg=self.theme['admin_indicator'])
             storage_sence_indicator.pack(side=tk.RIGHT, padx=5)
             Tooltip(self.storage_sence_checkbox, "Custom Storage Analyzer Created By EAWTECH", self.theme)
+
+            # Open MSCONFIG
+            msconfig_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
+            msconfig_frame.pack(fill=tk.X, pady=3)
+            self.open_msconfig_checkbox = tk.Checkbutton(
+                msconfig_frame,
+                text="Open MSCONFIG",
+                variable=self.open_msconfig,
+                font=task_font,
+                anchor=tk.W,
+                bg=self.theme['surface'],
+                fg=self.theme['task_fg'],
+                selectcolor=self.theme['surface_alt'],
+                activebackground=self.theme['surface_alt']
+            )
+            self.open_msconfig_checkbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.widgets.append(('checkbutton', self.open_msconfig_checkbox))
+            self.widget_fonts[self.open_msconfig_checkbox] = task_font
+            msconfig_indicator = tk.Label(
+                msconfig_frame,
+                text="●",
+                font=('Segoe UI', 10),
+                bg=self.theme['surface'],
+                fg=self.theme['user_indicator']
+            )
+            msconfig_indicator.pack(side=tk.RIGHT, padx=5)
+            Tooltip(self.open_msconfig_checkbox, "Launches Windows System Configuration (msconfig).", self.theme)
 
             # Activate Windows/Change Product Key
             activate_windows_frame = tk.Frame(self.additional_checkbox_frame, bg=self.theme['surface'])
@@ -7197,12 +7289,12 @@ class SystemCleanerGUI:
             "storage_sence": self.storage_sence,
             "stop_background_apps": self.stop_background_apps_var,
             "disable_startup_apps": self.disable_startup_apps_var,
-            "oo_shutup10": self.oo_shutup10,
             "edge_performance": self.edge_performance,
             "disable_gaming_features": self.disable_gaming_features,
             "enable_gaming_features": self.enable_gaming_features,
             "install_system_drivers": self.install_system_drivers,
             "debloat_windows": self.debloat_windows,
+            "debloat_extreme": self.debloat_extreme,
             "rebuild_icon_cache": self.rebuild_icon_cache,
             "component_cleanup": self.component_cleanup,
             "clear_print_spooler": self.clear_print_spooler,
@@ -7227,7 +7319,8 @@ class SystemCleanerGUI:
             "service_dependency_repair": self.service_dependency_repair,
             "create_restore_point_guardrail": self.create_restore_point_guardrail,
             "adjust_virtual_memory": self.adjust_virtual_memory,
-            "pc_report": self.pc_report
+            "pc_report": self.pc_report,
+            "open_msconfig": self.open_msconfig
         }
         return self._cached_task_var_map
 
@@ -7239,13 +7332,35 @@ class SystemCleanerGUI:
         if not q:
             return [], "Type symptoms like 'my network isn't working' or 'I got a BSOD'."
 
+        # Phrase-specific profile for donation prep requests.
+        if "laptop donation" in q or ("laptop" in q and "donation" in q):
+            donation_prep_tasks = [
+                "disable_fast_startup",
+                "adjust_virtual_memory",
+                "windows_adjustments",
+                "defrag_optimize",
+                "disable_gaming_features",
+                "edge_performance",
+                "change_dns",
+                "clean_temp",
+                "disk_cleanup",
+                "clear_browser_cache",
+                "component_cleanup",
+                "windows_updates",
+                "device_firmware",
+                "install_system_drivers",
+                "debloat_windows",
+                "chris_titus_utility",
+            ]
+            return donation_prep_tasks, "Laptop donation optimization + cleanup profile"
+
         def contains_any(terms):
             return any(t in q for t in terms)
 
         rules = [
             (["bloat", "bloatware", "debloat", "remove junk", "windows junk", "remove ads", "telemetry",
               "clean windows install", "freshen windows", "decrapify"],
-             ["debloat_windows", "chris_titus_utility", "oo_shutup10", "clean_temp", "disk_cleanup"],
+             ["debloat_windows", "chris_titus_utility", "clean_temp", "disk_cleanup"],
              "Debloat and privacy cleanup"),
             (["network", "internet", "wifi", "dns", "can't connect", "no internet", "ethernet"],
              ["network_diagnostic_bundle", "flush_dns", "change_dns", "reset_network", "network_adapter_reset",
@@ -7269,7 +7384,7 @@ class SystemCleanerGUI:
              ["install_system_drivers", "device_firmware", "driver_rollback_center", "windows_updates", "pc_report"],
              "Driver and firmware recovery"),
             (["virus", "malware", "trojan", "hacked", "defender", "infected",
-              "ransomware", "keylogger", "suspicious activity", "unauthorized access",
+              "ransomware", "suspicious activity", "unauthorized access",
               "compromised", "rootkit"],
              ["smart_malware_remediation", "defender_scan", "msrt_scan", "event_log_viewer",
               "sysinternals_autoruns", "sysinternals_procexp", "chk_dsk",
@@ -7308,7 +7423,7 @@ class SystemCleanerGUI:
              ["disk_cleanup", "clean_temp", "component_cleanup", "storage_sence"],
              "Storage cleanup"),
             (["privacy", "telemetry", "tracking", "disable microsoft tracking"],
-             ["oo_shutup10", "debloat_windows", "chris_titus_utility"],
+             ["debloat_windows", "chris_titus_utility"],
              "Privacy hardening"),
             (["edge slow", "edge issue", "microsoft edge"],
              ["edge_performance", "clear_browser_cache", "windows_updates"],
@@ -7406,6 +7521,9 @@ class SystemCleanerGUI:
              ["toggle_safe_mode", "boot_advanced_options", "create_restore_point_guardrail",
               "bsod_triage"],
              "Safe mode / advanced boot"),
+            (["msconfig", "system configuration", "startup configuration", "boot configuration"],
+             ["open_msconfig"],
+             "System configuration launcher"),
             (["advanced diagnostics", "diagnose my pc", "what is wrong", "computer issue", "pc problem", "fix my computer",
               "everything is broken", "help me fix my pc", "not sure", "unknown issue"],
              ["create_restore_point_guardrail", "pc_report", "event_log_viewer", "network_diagnostic_bundle",
@@ -7423,7 +7541,7 @@ class SystemCleanerGUI:
 
         # Additional token-level heuristics for extremely vague or short searches
         token_map = {
-            "bloat": ["debloat_windows", "chris_titus_utility", "oo_shutup10"],
+            "bloat": ["debloat_windows", "chris_titus_utility"],
             "junk": ["clean_temp", "disk_cleanup", "debloat_windows"],
             "broken": ["pc_report", "event_log_viewer", "repair_system",
                        "service_dependency_repair", "chk_dsk"],
@@ -7470,6 +7588,7 @@ class SystemCleanerGUI:
                         "event_log_viewer"],
             "explorer": ["repair_system", "rebuild_icon_cache", "event_log_viewer",
                          "service_dependency_repair"],
+            "msconfig": ["open_msconfig"],
         }
         for token, task_ids in token_map.items():
             if token in q:
@@ -7523,7 +7642,6 @@ class SystemCleanerGUI:
             "disable_fast_startup": "Disable Fast Startup",
             "debloat_windows": "Debloat Windows",
             "chris_titus_utility": "Chris Titus Windows Utility",
-            "oo_shutup10": "O&O ShutUp10 (Privacy Tool)",
             "storage_sence": "Storage Analyzer (Drive Scanner)",
             "rebuild_icon_cache": "Rebuild Icon & Thumbnail Cache",
             "rebuild_font_cache": "Rebuild Font Cache",
@@ -7547,6 +7665,7 @@ class SystemCleanerGUI:
             "toggle_safe_mode": "Toggle Safe Mode Boot",
             "boot_advanced_options": "Boot to Advanced Options / BIOS",
             "ipconfig_all": "View Network Adapter Details (ipconfig /all)",
+            "open_msconfig": "Open MSCONFIG",
         }
 
         query = self.smart_search_var.get() if hasattr(self, 'smart_search_var') else ""
@@ -7855,7 +7974,7 @@ class SystemCleanerGUI:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
 
             # Read stderr in a background thread to avoid deadlocks
@@ -7977,6 +8096,7 @@ class SystemCleanerGUI:
             "reset_search_index": 100,
             "service_dependency_repair": 110,
             "component_cleanup": 120,
+            "debloat_extreme": 125,
             "defrag_optimize": 140,
             "clear_browser_cache": 140,
             "clean_temp": 150,
@@ -8002,13 +8122,13 @@ class SystemCleanerGUI:
             # Utility launchers / external tools
             "chris_titus_utility": 500,
             "debloat_windows": 520,
-            "oo_shutup10": 530,
             "minidump_analyzer": 540,
             "sysinternals_autoruns": 550,
             "sysinternals_procexp": 560,
             "bsod_triage": 580,
             "toggle_safe_mode": 600,
             "boot_advanced_options": 650,
+            "open_msconfig": 25,
         }
 
         ordered = list(tasks)
@@ -8086,8 +8206,6 @@ class SystemCleanerGUI:
             tasks.append("stop_background_apps")
         if self.disable_startup_apps_var.get():
             tasks.append("disable_startup_apps")
-        if self.oo_shutup10.get():
-            tasks.append("oo_shutup10")
         if self.edge_performance.get():
             tasks.append("edge_performance")
         if self.disable_gaming_features.get():
@@ -8100,6 +8218,8 @@ class SystemCleanerGUI:
             tasks.append("install_system_drivers")
         if self.debloat_windows.get():
             tasks.append("debloat_windows")
+        if self.debloat_extreme.get():
+            tasks.append("debloat_extreme")
         if self.reset_win_update.get():
             tasks.append("reset_win_update")
         if self.reset_network.get():
@@ -8160,6 +8280,8 @@ class SystemCleanerGUI:
             tasks.append("create_restore_point_guardrail")
         if self.activate_windows.get():
             tasks.append("activate_windows")
+        if self.open_msconfig.get():
+            tasks.append("open_msconfig")
 
         # Resolve contradictory gaming toggles if both are selected.
         if "disable_gaming_features" in tasks and "enable_gaming_features" in tasks:
@@ -8213,13 +8335,13 @@ class SystemCleanerGUI:
         self.chris_titus_utility.set(False)
         self.storage_sence.set(False)
         self.device_firmware.set(False)
-        self.oo_shutup10.set(False)
         self.edge_performance.set(False)
         self.disable_gaming_features.set(False)
         self.enable_gaming_features.set(False)
         self.adjust_virtual_memory.set(False)
         self.install_system_drivers.set(False)
         self.debloat_windows.set(False)
+        self.debloat_extreme.set(False)
         self.reset_win_update.set(False)
         self.reset_network.set(False)
         self.rebuild_icon_cache.set(False)
@@ -8249,6 +8371,7 @@ class SystemCleanerGUI:
         self.network_diagnostic_bundle.set(False)
         self.service_dependency_repair.set(False)
         self.create_restore_point_guardrail.set(False)
+        self.open_msconfig.set(False)
 
         # Directly apply deselected styling to every row without relying on
         # variable reads or cache — guarantees a clean visual reset.
@@ -8305,13 +8428,13 @@ class SystemCleanerGUI:
                     "storage_sence": "StorageSence (Advanced Drive Scanner)",
                     "stop_background_apps": "Stop Background Apps",
                     "disable_startup_apps": "Disable Startup Apps",
-                    "oo_shutup10": "O&O ShutUp10 Privacy Tool",
                     "edge_performance": "Edge Performance Adjustments",
                     "disable_gaming_features": "Turn Off All Gaming Features",
                     "enable_gaming_features": "Turn On All Gaming Features",
                     "adjust_virtual_memory": "Optimize Virtual Memory",
                     "install_system_drivers": "Install System Drivers",
                     "debloat_windows": "Debloat Windows",
+                    "debloat_extreme": "Debloat Windows Extreme",
                     "reset_win_update": "Reset Windows Update",
                     "reset_network": "Reset Network Stack",
                     "rebuild_icon_cache": "Rebuild Icon Cache",
@@ -8336,7 +8459,8 @@ class SystemCleanerGUI:
                     "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
                     "service_dependency_repair": "Service Dependency Repair",
                     "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
-                    "activate_windows": "Activate Windows/Change Product Key"
+                    "activate_windows": "Activate Windows/Change Product Key",
+                    "open_msconfig": "Open MSCONFIG"
                 }
 
                 display_name = task_display_names.get(task, task)
@@ -8348,7 +8472,7 @@ class SystemCleanerGUI:
                     "change_dns", "reset_win_update", "reset_network", "component_cleanup", "toggle_safe_mode",
                     "boot_advanced_options", "rebuild_font_cache", "reset_search_index", "defrag_optimize",
                     "defender_scan", "msrt_scan", "deep_network_remediation", "install_system_drivers",
-                    "debloat_windows", "driver_rollback_center", "windows_update_forensic",
+                    "debloat_windows", "debloat_extreme", "driver_rollback_center", "windows_update_forensic",
                     "smart_malware_remediation", "service_dependency_repair"
                 }
                 if task in risky_tasks:
@@ -8390,8 +8514,6 @@ class SystemCleanerGUI:
                     self.stop_background_apps()
                 elif task == "disable_startup_apps":
                     self.disable_startup_apps()
-                elif task == "oo_shutup10":
-                    self.run_oo_shutup10()
                 elif task == "edge_performance":
                     self.apply_edge_performance_adjustments()
                 elif task == "disable_gaming_features":
@@ -8404,6 +8526,8 @@ class SystemCleanerGUI:
                     self.install_system_drivers_info()
                 elif task == "debloat_windows":
                     self.run_win11_debloat()
+                elif task == "debloat_extreme":
+                    self.run_win11_debloat_extreme()
                 elif task == "reset_win_update":
                     self.reset_windows_update()
                 elif task == "reset_network":
@@ -8464,6 +8588,8 @@ class SystemCleanerGUI:
                     self.run_create_restore_point_guardrail()
                 elif task == "activate_windows":
                     self.run_activate_windows()
+                elif task == "open_msconfig":
+                    self.run_open_msconfig()
 
                 self.queue.put(f"TASK_END:{task}")
             except Exception as e:
@@ -8494,6 +8620,7 @@ class SystemCleanerGUI:
             "disable_startup_apps": "Disable Startup Apps",
             "install_system_drivers": "Install System Drivers",
             "debloat_windows": "Debloat Windows",
+            "debloat_extreme": "Debloat Windows Extreme",
             "app_installer": "App Installer",
             "reset_win_update": "Reset Windows Update",
             "reset_network": "Reset Network Stack",
@@ -8515,7 +8642,8 @@ class SystemCleanerGUI:
             "network_diagnostic_bundle": "Network Deep Diagnosis Bundle",
             "service_dependency_repair": "Service Dependency Repair",
             "create_restore_point_guardrail": "Create Restore Point (Guardrail)",
-            "activate_windows": "Activate Windows/Change Product Key"
+            "activate_windows": "Activate Windows/Change Product Key",
+            "open_msconfig": "Open MSCONFIG"
         }
 
         try:
@@ -8582,23 +8710,68 @@ class SystemCleanerGUI:
 
     # ==================== CHRIS TITUS UTILITY METHODS ====================
     def run_chris_titus_utility(self):
-        """Run Chris Titus Windows Utility using PowerShell script"""
+        """Run Chris Titus Windows Utility using a downloaded script file (no pipe-to-iex)."""
         self.queue.put("PROGRESS:Chris Titus Utility:Starting Chris Titus Windows Utility...")
-        self.queue.put("PROGRESS:Chris Titus Utility:This will download and run the utility from christitus.com")
+        self.queue.put("PROGRESS:Chris Titus Utility:Using hardened download-and-run flow (no inline pipe execution).")
+
+        confirm = messagebox.askyesno(
+            "Run Remote Utility Script",
+            "This task downloads a PowerShell script from christitus.com and executes it locally.\n\n"
+            "Only continue if you trust this source and understand what the script does.\n\n"
+            "Continue?"
+        )
+        if not confirm:
+            self.queue.put("PROGRESS:Chris Titus Utility:Cancelled by user.")
+            return
 
         try:
-            # PowerShell command to run the Chris Titus Windows Utility
-            ps_command = "irm christitus.com/win | iex"
+            import urllib.request
 
-            self.queue.put("PROGRESS:Chris Titus Utility:Executing PowerShell command...")
-            self.queue.put(f"PROGRESS:Chris Titus Utility:Command: {ps_command}")
+            url = "https://christitus.com/win"
+            temp_dir = os.environ.get('TEMP', r'C:\Windows\Temp')
+            script_path = os.path.join(temp_dir, "WinMend_ChrisTitus_Utility.ps1")
 
-            # Run PowerShell command with live output
+            self.queue.put(f"PROGRESS:Chris Titus Utility:Downloading script from {url} ...")
+            req = urllib.request.Request(url, headers={'User-Agent': 'WinMend/1.0'})
+            with urllib.request.urlopen(req, timeout=60) as response:
+                script_bytes = response.read()
+
+            if not script_bytes or len(script_bytes) < 256:
+                self.queue.put("PROGRESS:Chris Titus Utility:Downloaded script appears invalid (too small). Aborting.")
+                return
+
+            script_hash = hashlib.sha256(script_bytes).hexdigest()
+            self.queue.put(f"PROGRESS:Chris Titus Utility:Downloaded SHA256: {script_hash}")
+
+            script_text = script_bytes.decode("utf-8", errors="replace")
+            marker_hits = sum(1 for marker in ("Chris Titus", "WinUtil", "PowerShell") if marker in script_text)
+            if marker_hits == 0:
+                self.queue.put("PROGRESS:Chris Titus Utility:Downloaded content did not match expected utility markers. Aborting.")
+                return
+
+            with open(script_path, "wb") as f:
+                f.write(script_bytes)
+            self.queue.put(f"PROGRESS:Chris Titus Utility:Saved script to {script_path}")
+
+            final_confirm = messagebox.askyesno(
+                "Execute Downloaded Script",
+                "The utility script was downloaded and saved locally.\n\n"
+                f"SHA256:\n{script_hash}\n\n"
+                "Do you want to execute this script now?"
+            )
+            if not final_confirm:
+                self.queue.put("PROGRESS:Chris Titus Utility:Execution cancelled by user after download.")
+                return
+
+            self.queue.put("PROGRESS:Chris Titus Utility:Executing script file with PowerShell...")
             rc, timed_out = self._run_live_command(
-                ['powershell', '-Command', ps_command], 'Chris Titus Utility', timeout=600)
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', script_path],
+                'Chris Titus Utility',
+                timeout=900
+            )
 
             if timed_out:
-                self.queue.put("PROGRESS:Chris Titus Utility:Operation timed out after 10 minutes")
+                self.queue.put("PROGRESS:Chris Titus Utility:Operation timed out after 15 minutes")
             elif rc == 0:
                 self.queue.put("PROGRESS:Chris Titus Utility:Chris Titus Windows Utility completed successfully")
             else:
@@ -8627,6 +8800,20 @@ class SystemCleanerGUI:
 
         except Exception as e:
             self.queue.put(f"PROGRESS:StorageSence:Error: {str(e)}")
+
+    def run_open_msconfig(self):
+        """Launch System Configuration (msconfig)."""
+        self.queue.put("PROGRESS:Open MSCONFIG:Launching System Configuration...")
+        try:
+            try:
+                os.startfile("msconfig")
+            except Exception:
+                subprocess.Popen(['msconfig'], startupinfo=_no_console_startupinfo())
+            self.queue.put("PROGRESS:Open MSCONFIG:MSCONFIG opened successfully.")
+        except FileNotFoundError:
+            self.queue.put("PROGRESS:Open MSCONFIG:msconfig.exe not found on this system.")
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Open MSCONFIG:Error launching MSCONFIG: {str(e)}")
 
     # ==================== PC REPORT METHODS ====================
     def generate_pc_report(self):
@@ -8864,7 +9051,7 @@ class SystemCleanerGUI:
 
             self.queue.put("PROGRESS:Rebuild Icon Cache:Executing cache rebuild script...")
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Rebuild Icon Cache', timeout=120)
 
             if timed_out:
@@ -8909,7 +9096,7 @@ class SystemCleanerGUI:
 
     def run_toggle_safe_mode(self):
         self.queue.put("PROGRESS:Safe Mode:Checking current bcdedit status...")
-        res = subprocess.run(['bcdedit'], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        res = subprocess.run(['bcdedit'], capture_output=True, text=True, startupinfo=_no_console_startupinfo())
         if res.returncode != 0:
             self.queue.put(f"PROGRESS:Safe Mode:Failed to read boot configuration (rc={res.returncode}).")
             if res.stderr and res.stderr.strip():
@@ -8920,7 +9107,7 @@ class SystemCleanerGUI:
             self.queue.put("PROGRESS:Safe Mode:Safe Mode is currently scheduled. Disabling...")
             change = subprocess.run(
                 ['bcdedit', '/deletevalue', '{current}', 'safeboot'],
-                capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+                capture_output=True, text=True, startupinfo=_no_console_startupinfo()
             )
             if change.returncode == 0:
                 self.queue.put("PROGRESS:Safe Mode:Safe Mode has been DISABLED for the next boot.")
@@ -8932,7 +9119,7 @@ class SystemCleanerGUI:
             self.queue.put("PROGRESS:Safe Mode:Safe Mode is not scheduled. Enabling with networking...")
             change = subprocess.run(
                 ['bcdedit', '/set', '{current}', 'safeboot', 'network'],
-                capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+                capture_output=True, text=True, startupinfo=_no_console_startupinfo()
             )
             if change.returncode == 0:
                 self.queue.put("PROGRESS:Safe Mode:Safe Mode with Networking has been ENABLED for the next boot.")
@@ -8953,10 +9140,10 @@ class SystemCleanerGUI:
         self.queue.put("PROGRESS:Advanced Boot:Attempting to schedule UEFI firmware reboot...")
         
         # Try to set UEFI boot flag
-        res = subprocess.run(['shutdown', '/r', '/fw', '/f', '/t', '0'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        res = subprocess.run(['shutdown', '/r', '/fw', '/f', '/t', '0'], capture_output=True, startupinfo=_no_console_startupinfo())
         if res.returncode != 0:
             self.queue.put("PROGRESS:Advanced Boot:Firmware boot unavailable (legacy BIOS?). Falling back to Advanced Options menu...")
-            res2 = subprocess.run(['shutdown', '/r', '/o', '/f', '/t', '0'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            res2 = subprocess.run(['shutdown', '/r', '/o', '/f', '/t', '0'], capture_output=True, startupinfo=_no_console_startupinfo())
             if res2.returncode != 0:
                 self.queue.put("PROGRESS:Advanced Boot:Failed to schedule Advanced Boot reboot.")
 
@@ -8989,8 +9176,8 @@ class SystemCleanerGUI:
 #	::1             localhost
 """
             # Take ownership and grant full control to Administrators (in case it's locked by malware)
-            subprocess.run(['takeown', '/f', hosts_path, '/a'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            subprocess.run(['icacls', hosts_path, '/grant', 'Administrators:F'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(['takeown', '/f', hosts_path, '/a'], capture_output=True, startupinfo=_no_console_startupinfo())
+            subprocess.run(['icacls', hosts_path, '/grant', 'Administrators:F'], capture_output=True, startupinfo=_no_console_startupinfo())
             
             with open(hosts_path, 'w', encoding='utf-8') as f:
                 f.write(original_content)
@@ -8999,7 +9186,7 @@ class SystemCleanerGUI:
             
             # Flush DNS after resetting hosts
             self.queue.put("PROGRESS:Reset Hosts File:Flushing DNS cache...")
-            subprocess.run(['ipconfig', '/flushdns'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(['ipconfig', '/flushdns'], capture_output=True, startupinfo=_no_console_startupinfo())
             
         except Exception as e:
             self.queue.put(f"PROGRESS:Reset Hosts File:Failed to reset hosts file - {str(e)}")
@@ -9007,37 +9194,61 @@ class SystemCleanerGUI:
     def run_export_wifi_passwords(self):
         if not messagebox.askyesno(
             "Security Warning",
-            "This will export your saved Wi-Fi passwords as plain text to your Desktop.\n\n"
-            "Only proceed on a trusted, private machine.\n\nContinue?"
+            "This operation can export saved Wi-Fi passwords in plain text.\n\n"
+            "Only proceed on your own trusted machine and only when necessary.\n\n"
+            "Continue?"
         ):
             self.queue.put("PROGRESS:Wi-Fi Export:Export cancelled by user.")
             return
+
+        gate_text = simpledialog.askstring(
+            "Sensitive Operation Confirmation",
+            "Type exactly:\nEXPORT WIFI PASSWORDS\n\nto unlock plaintext password export.",
+            parent=self.root
+        )
+        allow_plaintext = bool(gate_text and gate_text.strip() == "EXPORT WIFI PASSWORDS")
+        if not allow_plaintext:
+            self.queue.put("PROGRESS:Wi-Fi Export:Plaintext export lock not satisfied. Exporting profile names only.")
+
+        if not messagebox.askyesno(
+            "Final Confirmation",
+            "Final confirmation required.\n\n"
+            "Proceed with Wi-Fi export now?"
+        ):
+            self.queue.put("PROGRESS:Wi-Fi Export:Final confirmation declined by user.")
+            return
+
         self.queue.put("PROGRESS:Wi-Fi Export:Exporting saved Wi-Fi networks to Desktop...")
         try:
             desktop = os.path.join(os.path.expanduser("~"), "Desktop")
             export_file = os.path.join(desktop, "WiFi_Passwords_Export.txt")
             
-            res = subprocess.run(["netsh", "wlan", "show", "profiles"], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            res = subprocess.run(["netsh", "wlan", "show", "profiles"], capture_output=True, text=True, startupinfo=_no_console_startupinfo())
             profiles = re.findall(r"All User Profile\s*:\s*(.*)", res.stdout)
             
             with open(export_file, "w", encoding="utf-8") as f:
                 f.write("=== Saved Wi-Fi Passwords ===\n\n")
+                f.write(f"Plaintext Password Export Enabled: {allow_plaintext}\n\n")
                 if not profiles:
                     f.write("No Wi-Fi profiles found on this system.\n")
                 
                 for profile in profiles:
                     profile = profile.strip()
-                    key_res = subprocess.run(["netsh", "wlan", "show", "profile", f'name={profile}', "key=clear"], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                    key_match = re.search(r"Key Content\s*:\s*(.*)", key_res.stdout)
-                    password = key_match.group(1).strip() if key_match else "No Password / Open"
+                    if allow_plaintext:
+                        key_res = subprocess.run(
+                            ["netsh", "wlan", "show", "profile", f'name={profile}', "key=clear"],
+                            capture_output=True,
+                            text=True,
+                            startupinfo=_no_console_startupinfo()
+                        )
+                        key_match = re.search(r"Key Content\s*:\s*(.*)", key_res.stdout)
+                        password = key_match.group(1).strip() if key_match else "No Password / Open"
+                    else:
+                        password = "[Locked] Type gate phrase to enable password export"
                     f.write(f"Network: {profile}\nPassword: {password}\n\n")
                     
             self.queue.put(f"PROGRESS:Wi-Fi Export:Successfully exported to {export_file}")
-            # Try to open it
-            try:
-                os.startfile(export_file)
-            except OSError:
-                pass
+            self.queue.put("PROGRESS:Wi-Fi Export:Auto-open disabled for security hardening. Open the file manually if needed.")
         except Exception as e:
             self.queue.put(f"PROGRESS:Wi-Fi Export:Error during export: {str(e)}")
 
@@ -9153,7 +9364,7 @@ class SystemCleanerGUI:
             '''
 
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Network Adapter Reset', timeout=60)
 
             if timed_out:
@@ -9185,7 +9396,7 @@ class SystemCleanerGUI:
                 ['powershell', '-NoProfile', '-Command',
                  '(Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop'],
                 capture_output=True, text=True, timeout=10,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
             gateway = result.stdout.strip()
             if gateway:
@@ -9263,7 +9474,7 @@ class SystemCleanerGUI:
             '''
 
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Optimize Drives', timeout=1800)  # 30 min timeout for large HDDs
 
             if timed_out:
@@ -9430,7 +9641,7 @@ class SystemCleanerGUI:
             '''
 
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Event Log Viewer', timeout=60)
 
             if timed_out:
@@ -9542,7 +9753,7 @@ class SystemCleanerGUI:
                         text=True,
                         check=False,
                         timeout=300,  # 5 minute timeout
-                        creationflags=CREATE_NO_WINDOW  # Hide console window
+                        startupinfo=_no_console_startupinfo()  # Hide console window
                     )
 
                     # Log output
@@ -9632,7 +9843,7 @@ class SystemCleanerGUI:
                         ['cleanmgr', '/sagerun:1'],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
 
                     timeout_seconds = 300  # 5 minutes
@@ -9664,7 +9875,7 @@ class SystemCleanerGUI:
                     while time.time() - settle_start < 60:
                         check = subprocess.run(
                             ['tasklist', '/fi', 'IMAGENAME eq cleanmgr.exe', '/fo', 'csv', '/nh'],
-                            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW, timeout=10
+                            capture_output=True, text=True, startupinfo=_no_console_startupinfo(), timeout=10
                         )
                         if 'cleanmgr.exe' not in check.stdout.lower():
                             break
@@ -9675,7 +9886,7 @@ class SystemCleanerGUI:
                     subprocess.run(
                         ['powershell', '-NonInteractive', '-Command',
                          'Clear-RecycleBin -Force -ErrorAction SilentlyContinue'],
-                        capture_output=True, timeout=120, creationflags=CREATE_NO_WINDOW
+                        capture_output=True, timeout=120, startupinfo=_no_console_startupinfo()
                     )
                     self.queue.put("PROGRESS:Disk Cleanup:All cleanup completed 100%")
 
@@ -9702,7 +9913,7 @@ class SystemCleanerGUI:
                     text=True,
                     check=True,
                     timeout=30,
-                    creationflags=CREATE_NO_WINDOW  # Hide console window
+                    startupinfo=_no_console_startupinfo()  # Hide console window
                 )
                 self.queue.put("PROGRESS:Disable Fast Startup:Hibernation disabled successfully")
                 if result.stdout.strip():
@@ -9967,7 +10178,7 @@ class SystemCleanerGUI:
 
         try:
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Device Firmware', timeout=5400)
 
             if timed_out:
@@ -10086,9 +10297,19 @@ class SystemCleanerGUI:
                     "values": [("EnableTransparency", 0)]
                 },
                 {
-                    "name": "Visual Effects (Best Performance)",
-                    "path": r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-                    "values": [("VisualFXSetting", 2)]
+                    "name": "Visual Effects Mode (Custom)",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
+                    "values": [("VisualFXSetting", 3)]
+                },
+                {
+                    "name": "Visual Effects Custom Flags",
+                    "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+                    "values": [
+                        ("TaskbarAnimations", 0),
+                        ("ListviewShadow", 0),
+                        ("ListviewAlphaSelect", 1),
+                        ("IconsOnly", 0)
+                    ]
                 },
                 {
                     "name": "Game Bar",
@@ -10156,6 +10377,96 @@ class SystemCleanerGUI:
                 except Exception as e:
                     self.queue.put(f"PROGRESS:Windows Adjustments:Error disabling {adjustment['name']}: {str(e)}")
 
+            # Apply exact visual-effects profile via SystemParametersInfo.
+            self.queue.put("PROGRESS:Windows Adjustments:Applying custom visual-effects profile...")
+            try:
+                SPIF_UPDATEINIFILE = 0x01
+                SPIF_SENDCHANGE = 0x02
+                SPIF_FLAGS = SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+
+                def _set_spi_ui_bool(action, enabled, label):
+                    try:
+                        ok = ctypes.windll.user32.SystemParametersInfoW(
+                            action, 1 if enabled else 0, 0, SPIF_FLAGS
+                        )
+                        if ok:
+                            state = "ON" if enabled else "OFF"
+                            self.queue.put(f"PROGRESS:Windows Adjustments:{label} set to {state}")
+                        else:
+                            self.queue.put(f"PROGRESS:Windows Adjustments:Could not apply {label} (API returned false)")
+                    except Exception as ex:
+                        self.queue.put(f"PROGRESS:Windows Adjustments:Error applying {label}: {str(ex)}")
+
+                def _set_spi_pv_bool(action, enabled, label):
+                    try:
+                        value = ctypes.c_int(1 if enabled else 0)
+                        ok = ctypes.windll.user32.SystemParametersInfoW(
+                            action, 0, ctypes.byref(value), SPIF_FLAGS
+                        )
+                        if ok:
+                            state = "ON" if enabled else "OFF"
+                            self.queue.put(f"PROGRESS:Windows Adjustments:{label} set to {state}")
+                        else:
+                            self.queue.put(f"PROGRESS:Windows Adjustments:Could not apply {label} (API returned false)")
+                    except Exception as ex:
+                        self.queue.put(f"PROGRESS:Windows Adjustments:Error applying {label}: {str(ex)}")
+
+                # Keep only requested visual effects ON.
+                _set_spi_pv_bool(0x1043, True, "Animate controls and elements inside windows")
+                _set_spi_pv_bool(0x1025, True, "Show shadows under windows")
+                _set_spi_ui_bool(0x0025, True, "Show window contents while dragging")
+                _set_spi_ui_bool(0x004B, True, "Smooth edges of screen fonts")
+                _set_spi_pv_bool(0x1007, True, "Smooth-scroll list boxes")
+
+                # Turn non-requested animation effects OFF.
+                _set_spi_pv_bool(0x1003, False, "Fade or slide menus into view")
+                _set_spi_pv_bool(0x1005, False, "Slide open combo boxes")
+                _set_spi_pv_bool(0x1013, False, "Fade out menu items after clicking")
+                _set_spi_pv_bool(0x1015, False, "Selection fade")
+                _set_spi_pv_bool(0x1017, False, "Fade or slide ToolTips into view")
+                _set_spi_pv_bool(0x1019, False, "Fade ToolTips")
+                _set_spi_pv_bool(0x101B, False, "Show shadows under mouse pointer")
+                _set_spi_pv_bool(0x100F, False, "Hot tracking")
+
+                # Disable "Animate windows when minimizing and maximizing".
+                try:
+                    class ANIMATIONINFO(ctypes.Structure):
+                        _fields_ = [("cbSize", ctypes.c_uint), ("iMinAnimate", ctypes.c_int)]
+
+                    anim = ANIMATIONINFO()
+                    anim.cbSize = ctypes.sizeof(ANIMATIONINFO)
+                    anim.iMinAnimate = 0
+                    ok = ctypes.windll.user32.SystemParametersInfoW(0x0049, anim.cbSize, ctypes.byref(anim), SPIF_FLAGS)
+                    if ok:
+                        self.queue.put("PROGRESS:Windows Adjustments:Animate windows when minimizing/maximizing set to OFF")
+                    else:
+                        self.queue.put("PROGRESS:Windows Adjustments:Could not apply minimize/maximize animation setting")
+                except Exception as ex:
+                    self.queue.put(f"PROGRESS:Windows Adjustments:Error applying minimize/maximize animation setting: {str(ex)}")
+
+                # Force ClearType for smoother edges.
+                try:
+                    ok = ctypes.windll.user32.SystemParametersInfoW(0x200B, 0, ctypes.c_void_p(2), SPIF_FLAGS)
+                    if ok:
+                        self.queue.put("PROGRESS:Windows Adjustments:Font smoothing type set to ClearType")
+                except Exception:
+                    pass
+
+                # Refresh shell visual settings.
+                try:
+                    subprocess.run(
+                        ['RUNDLL32.EXE', 'user32.dll,UpdatePerUserSystemParameters', '1', 'True'],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        startupinfo=_no_console_startupinfo()
+                    )
+                except Exception:
+                    pass
+
+            except Exception as e:
+                self.queue.put(f"PROGRESS:Windows Adjustments:Error applying visual-effects profile: {str(e)}")
+
             # Network adjustment using safe PowerShell
             self.queue.put("PROGRESS:Windows Adjustments:Changing network to private...")
             try:
@@ -10175,7 +10486,7 @@ class SystemCleanerGUI:
                     text=True,
                     check=False,
                     timeout=60,
-                    creationflags=CREATE_NO_WINDOW  # Hide console window
+                    startupinfo=_no_console_startupinfo()  # Hide console window
                 )
 
                 if result.stdout.strip():
@@ -10267,7 +10578,7 @@ class SystemCleanerGUI:
                 text=True,
                 check=False,
                 timeout=30,
-                creationflags=CREATE_NO_WINDOW  # Hide console window
+                startupinfo=_no_console_startupinfo()  # Hide console window
             )
 
             self.queue.put("PROGRESS:Display IP Configuration:IP configuration retrieved successfully")
@@ -10343,7 +10654,7 @@ class SystemCleanerGUI:
                 text=True,
                 check=False,
                 timeout=60,
-                creationflags=CREATE_NO_WINDOW  # Hide console window
+                startupinfo=_no_console_startupinfo()  # Hide console window
             )
 
             self.queue.put("PROGRESS:Change DNS:DNS change process completed")
@@ -10447,11 +10758,11 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
                 self.queue.put("PROGRESS:AutoPilot CSV:Step 3: Running AutoPilot script...")
 
                 result = subprocess.run(
-                    ['powershell', '-ExecutionPolicy', 'Bypass', '-File', script_path],
+                    ['powershell', '-ExecutionPolicy', 'RemoteSigned', '-File', script_path],
                     capture_output=True,
                     text=True,
                     timeout=300,  # 5 minute timeout
-                    creationflags=CREATE_NO_WINDOW  # Hide console window
+                    startupinfo=_no_console_startupinfo()  # Hide console window
                 )
 
                 if result.stdout.strip():
@@ -10528,7 +10839,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
                 text=True,
                 check=False,
                 timeout=60,
-                creationflags=CREATE_NO_WINDOW  # Hide console window
+                startupinfo=_no_console_startupinfo()  # Hide console window
             )
 
             if result.stdout.strip():
@@ -10639,12 +10950,12 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
             self.queue.put("PROGRESS:Disable Startup Apps:Executing PowerShell script...")
             result = subprocess.run(
-                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=120,
-                creationflags=CREATE_NO_WINDOW  # Hide console window
+                startupinfo=_no_console_startupinfo()  # Hide console window
             )
 
             if result.stdout.strip():
@@ -10666,57 +10977,6 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             self.queue.put("PROGRESS:Disable Startup Apps:Startup apps operation timed out")
         except Exception as e:
             self.queue.put(f"PROGRESS:Disable Startup Apps:Error disabling startup apps: {str(e)}")
-
-    def run_oo_shutup10(self):
-        """Download and run O&O ShutUp10 privacy tool"""
-        self.queue.put("PROGRESS:O&O ShutUp10:Starting O&O ShutUp10 download...")
-        try:
-            import tempfile
-
-            # Download using PowerShell to avoid SSL certificate issues
-            temp_dir = tempfile.gettempdir()
-            exe_path = os.path.join(temp_dir, "OOSU10.exe")
-            download_url = "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe"
-
-            self.queue.put("PROGRESS:O&O ShutUp10:Downloading from official O&O Software site...")
-
-            # Use PowerShell to download (bypasses Python SSL issues)
-            ps_script = f'''
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            $ProgressPreference = 'SilentlyContinue'
-            try {{
-                Invoke-WebRequest -Uri '{download_url}' -OutFile '{exe_path}' -UseBasicParsing
-                Write-Host "Download successful"
-            }} catch {{
-                Write-Error "Download failed: $($_.Exception.Message)"
-                exit 1
-            }}
-            '''
-
-            result = subprocess.run(
-                ['powershell', '-Command', ps_script],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=120,
-                creationflags=CREATE_NO_WINDOW
-            )
-
-            if result.returncode != 0 or not os.path.exists(exe_path):
-                self.queue.put(f"PROGRESS:O&O ShutUp10:Download failed: {result.stderr.strip()}")
-                return
-
-            self.queue.put("PROGRESS:O&O ShutUp10:Download complete. Launching O&O ShutUp10...")
-
-            # Run the executable (without CREATE_NO_WINDOW so user can see the GUI)
-            subprocess.Popen([exe_path])
-
-            self.queue.put("PROGRESS:O&O ShutUp10:O&O ShutUp10 launched successfully!")
-            self.queue.put(
-                "PROGRESS:O&O ShutUp10:Note: Apply your preferred privacy settings in the O&O ShutUp10 window.")
-
-        except Exception as e:
-            self.queue.put(f"PROGRESS:O&O ShutUp10:Error running O&O ShutUp10: {str(e)}")
 
     def apply_edge_performance_adjustments(self):
         """Disable Edge startup boost, background apps, and change search engine to Google"""
@@ -10874,12 +11134,12 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
             self.queue.put("PROGRESS:Edge Performance:Executing Edge optimization script...")
             result = subprocess.run(
-                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=60,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
 
             if result.stdout.strip():
@@ -10991,12 +11251,12 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
             self.queue.put("PROGRESS:Gaming Features:Executing gaming features disable script...")
             result = subprocess.run(
-                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=60,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
 
             if result.stdout.strip():
@@ -11149,12 +11409,12 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
             self.queue.put("PROGRESS:Gaming Features:Executing gaming features enable script...")
             result = subprocess.run(
-                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=300,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
 
             if result.stdout.strip():
@@ -11268,12 +11528,12 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
             self.queue.put("PROGRESS:Virtual Memory:Executing virtual memory optimization script...")
             result = subprocess.run(
-                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=90,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
 
             if result.stdout.strip():
@@ -11353,7 +11613,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             '''
             self.queue.put("PROGRESS:Install System Drivers:Attempting automatic driver install via Windows Update...")
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Install System Drivers', timeout=5400)
 
             if timed_out:
@@ -11381,7 +11641,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
                         text=True,
                         check=False,
                         timeout=120,
-                        creationflags=CREATE_NO_WINDOW
+                        startupinfo=_no_console_startupinfo()
                     )
 
                     if result.stdout.strip():
@@ -11408,37 +11668,357 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             self.queue.put(f"PROGRESS:Install System Drivers:Error collecting system driver information: {str(e)}")
 
     def run_win11_debloat(self):
-        """Download and run Raphire Win11Debloat script"""
-        self.queue.put("PROGRESS:Debloat Windows:Starting Win11Debloat integration...")
+        """Remove default Windows bloatware apps (no download, no GUI, no system tweaks)."""
+        self.queue.put("PROGRESS:Debloat Windows:Starting bloatware removal...")
         try:
-            ps_script = '''
-            try {
-                $ErrorActionPreference = "Stop"
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                Write-Host "Downloading and launching Win11Debloat from GitHub..."
-                & ([scriptblock]::Create((Invoke-RestMethod "https://debloat.raphi.re/")))
-                Write-Host "Win11Debloat launched successfully"
-                Write-Host "Follow the Win11Debloat window prompts to apply debloat actions"
-            } catch {
-                Write-Error "Failed to run Win11Debloat: $($_.Exception.Message)"
-                exit 1
-            }
-            '''
+            # 91 default-safe apps sourced from Win11Debloat Apps.json (SelectedByDefault: true)
+            # Each entry: (AppId, FriendlyName)
+            apps = [
+                # --- Microsoft apps ---
+                ("Clipchamp.Clipchamp",                          "Clipchamp (Video Editor)"),
+                ("Microsoft.3DBuilder",                          "3D Builder"),
+                ("Microsoft.549981C3F5F10",                      "Cortana"),
+                ("Microsoft.BingFinance",                        "Bing Finance"),
+                ("Microsoft.BingFoodAndDrink",                   "Bing Food And Drink"),
+                ("Microsoft.BingHealthAndFitness",               "Bing Health And Fitness"),
+                ("Microsoft.BingNews",                           "Bing News"),
+                ("Microsoft.BingSports",                         "Bing Sports"),
+                ("Microsoft.BingTranslator",                     "Bing Translator"),
+                ("Microsoft.BingTravel",                         "Bing Travel"),
+                ("Microsoft.BingWeather",                        "Bing Weather"),
+                ("Microsoft.Copilot",                            "Copilot"),
+                ("Microsoft.Windows.AIHub",                      "Copilot+ AI Hub"),
+                ("Microsoft.PCManager",                          "Microsoft PC Manager"),
+                ("Microsoft.Getstarted",                         "Get Started"),
+                ("Microsoft.Messaging",                          "Messaging"),
+                ("Microsoft.Microsoft3DViewer",                  "3D Viewer"),
+                ("Microsoft.MicrosoftJournal",                   "Microsoft Journal"),
+                ("Microsoft.MicrosoftOfficeHub",                 "Office Hub"),
+                ("Microsoft.MicrosoftPowerBIForWindows",         "Power BI"),
+                ("Microsoft.MicrosoftSolitaireCollection",       "Solitaire Collection"),
+                ("Microsoft.MicrosoftStickyNotes",               "Sticky Notes"),
+                ("Microsoft.MixedReality.Portal",                "Mixed Reality Portal"),
+                ("Microsoft.NetworkSpeedTest",                   "Network Speed Test"),
+                ("Microsoft.News",                               "Microsoft News"),
+                ("Microsoft.Office.OneNote",                     "OneNote (UWP)"),
+                ("Microsoft.Office.Sway",                        "Sway"),
+                ("Microsoft.OneConnect",                         "One Connect"),
+                ("Microsoft.Print3D",                            "Print 3D"),
+                ("Microsoft.PowerAutomateDesktop",               "Power Automate"),
+                ("Microsoft.SkypeApp",                           "Skype (UWP)"),
+                ("Microsoft.Todos",                              "Microsoft To Do"),
+                ("Microsoft.Windows.DevHome",                    "Dev Home"),
+                ("Microsoft.WindowsAlarms",                      "Alarms & Clock"),
+                ("Microsoft.WindowsFeedbackHub",                 "Feedback Hub"),
+                ("Microsoft.WindowsMaps",                        "Windows Maps"),
+                ("Microsoft.WindowsSoundRecorder",               "Sound Recorder"),
+                ("Microsoft.XboxApp",                            "Xbox Console Companion"),
+                ("Microsoft.ZuneVideo",                          "Movies & TV"),
+                ("MicrosoftCorporationII.MicrosoftFamily",       "Family Safety"),
+                ("MicrosoftCorporationII.QuickAssist",           "Quick Assist"),
+                ("MicrosoftTeams",                               "Microsoft Teams (Old)"),
+                ("MSTeams",                                      "Microsoft Teams (New)"),
+                # --- Third-party / OEM preinstalled ---
+                ("ACGMediaPlayer",                               "ACG Media Player"),
+                ("ActiproSoftwareLLC",                           "Actipro Software"),
+                ("AdobeSystemsIncorporated.AdobePhotoshopExpress","Adobe Photoshop Express"),
+                ("Amazon.com.Amazon",                            "Amazon"),
+                ("AmazonVideo.PrimeVideo",                       "Prime Video"),
+                ("Asphalt8Airborne",                             "Asphalt 8"),
+                ("AutodeskSketchBook",                           "Autodesk SketchBook"),
+                ("CaesarsSlotsFreeCasino",                       "Caesars Slots"),
+                ("COOKINGFEVER",                                 "Cooking Fever"),
+                ("CyberLinkMediaSuiteEssentials",                "CyberLink Media Suite"),
+                ("DisneyMagicKingdoms",                          "Disney Magic Kingdoms"),
+                ("Disney",                                       "Disney"),
+                ("DrawboardPDF",                                 "Drawboard PDF"),
+                ("Duolingo-LearnLanguagesforFree",               "Duolingo"),
+                ("EclipseManager",                               "Eclipse Manager"),
+                ("Facebook",                                     "Facebook"),
+                ("FarmVille2CountryEscape",                      "FarmVille 2"),
+                ("fitbit",                                       "Fitbit"),
+                ("Flipboard",                                    "Flipboard"),
+                ("HiddenCity",                                   "Hidden City"),
+                ("HULULLC.HULUPLUS",                             "Hulu"),
+                ("iHeartRadio",                                  "iHeartRadio"),
+                ("Instagram",                                    "Instagram"),
+                ("king.com.BubbleWitch3Saga",                    "Bubble Witch 3"),
+                ("king.com.CandyCrushSaga",                      "Candy Crush Saga"),
+                ("king.com.CandyCrushSodaSaga",                  "Candy Crush Soda"),
+                ("LinkedInforWindows",                           "LinkedIn"),
+                ("MarchofEmpires",                               "March of Empires"),
+                ("Netflix",                                      "Netflix"),
+                ("NYTCrossword",                                 "NYT Crossword"),
+                ("OneCalendar",                                  "One Calendar"),
+                ("PandoraMediaInc",                              "Pandora"),
+                ("PhototasticCollage",                           "Phototastic Collage"),
+                ("PicsArt-PhotoStudio",                          "PicsArt"),
+                ("Plex",                                         "Plex"),
+                ("PolarrPhotoEditorAcademicEdition",             "Polarr Photo Editor"),
+                ("Royal Revolt",                                 "Royal Revolt"),
+                ("Shazam",                                       "Shazam"),
+                ("Sidia.LiveWallpaper",                          "Live Wallpaper"),
+                ("SlingTV",                                      "Sling TV"),
+                ("Spotify",                                      "Spotify"),
+                ("TikTok",                                       "TikTok"),
+                ("TuneInRadio",                                  "TuneIn Radio"),
+                ("Twitter",                                      "Twitter / X"),
+                ("Viber",                                        "Viber"),
+                ("WinZipUniversal",                              "WinZip"),
+                ("Wunderlist",                                   "Wunderlist"),
+                ("XING",                                         "XING"),
+            ]
 
-            self.queue.put("PROGRESS:Debloat Windows:Executing Win11Debloat PowerShell script...")
-            rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
-                'Debloat Windows', timeout=300)
+            total = len(apps)
+            removed = 0
+            skipped = 0
 
-            if timed_out:
-                self.queue.put("PROGRESS:Debloat Windows:Operation timed out")
-            elif rc != 0:
-                self.queue.put(f"PROGRESS:Debloat Windows:Script exited with code {rc}")
-            else:
-                self.queue.put("PROGRESS:Debloat Windows:Win11Debloat completed/started successfully")
+            for app_id, friendly in apps:
+                self.queue.put(f"PROGRESS:Debloat Windows:Removing {friendly}...")
+                ps = (
+                    f'$id = "*{app_id}*"; '
+                    f'Get-AppxPackage -Name $id -AllUsers -ErrorAction SilentlyContinue | '
+                    f'Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue; '
+                    f'Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | '
+                    f'Where-Object {{ $_.PackageName -like $id }} | '
+                    f'ForEach-Object {{ Remove-AppxProvisionedPackage -Online -AllUsers -PackageName $_.PackageName -ErrorAction SilentlyContinue }}'
+                )
+                try:
+                    result = subprocess.run(
+                        ['powershell', '-NoProfile', '-NonInteractive',
+                         '-ExecutionPolicy', 'RemoteSigned', '-Command', ps],
+                        capture_output=True, text=True, timeout=60,
+                        startupinfo=_no_console_startupinfo()
+                    )
+                    if result.returncode == 0:
+                        removed += 1
+                    else:
+                        skipped += 1
+                        self.queue.put(f"PROGRESS:Debloat Windows:  Skipped {friendly} (not installed or protected)")
+                except subprocess.TimeoutExpired:
+                    skipped += 1
+                    self.queue.put(f"PROGRESS:Debloat Windows:  Timeout removing {friendly}")
+                except Exception as ex:
+                    skipped += 1
+                    self.queue.put(f"PROGRESS:Debloat Windows:  Error removing {friendly}: {ex}")
+
+            self.queue.put(
+                f"PROGRESS:Debloat Windows:Done. {removed}/{total} apps processed, {skipped} not found/skipped."
+            )
 
         except Exception as e:
-            self.queue.put(f"PROGRESS:Debloat Windows:Error running Win11Debloat: {str(e)}")
+            self.queue.put(f"PROGRESS:Debloat Windows:Error: {str(e)}")
+
+    def run_win11_debloat_extreme(self):
+        """Remove ALL optional, unsafe, and OEM apps (full nuclear debloat). No download, no GUI."""
+        self.queue.put("PROGRESS:Debloat Windows Extreme:Starting extreme bloatware removal...")
+        try:
+            # --- Includes all 91 standard apps PLUS optional, unsafe, and OEM apps ---
+            apps = [
+                # ===== STANDARD (SelectedByDefault: true) =====
+                ("Clipchamp.Clipchamp",                           "Clipchamp (Video Editor)"),
+                ("Microsoft.3DBuilder",                           "3D Builder"),
+                ("Microsoft.549981C3F5F10",                       "Cortana"),
+                ("Microsoft.BingFinance",                         "Bing Finance"),
+                ("Microsoft.BingFoodAndDrink",                    "Bing Food And Drink"),
+                ("Microsoft.BingHealthAndFitness",                "Bing Health And Fitness"),
+                ("Microsoft.BingNews",                            "Bing News"),
+                ("Microsoft.BingSports",                          "Bing Sports"),
+                ("Microsoft.BingTranslator",                      "Bing Translator"),
+                ("Microsoft.BingTravel",                          "Bing Travel"),
+                ("Microsoft.BingWeather",                         "Bing Weather"),
+                ("Microsoft.Copilot",                             "Copilot"),
+                ("Microsoft.Windows.AIHub",                       "Copilot+ AI Hub"),
+                ("Microsoft.PCManager",                           "Microsoft PC Manager"),
+                ("Microsoft.Getstarted",                          "Get Started"),
+                ("Microsoft.Messaging",                           "Messaging"),
+                ("Microsoft.Microsoft3DViewer",                   "3D Viewer"),
+                ("Microsoft.MicrosoftJournal",                    "Microsoft Journal"),
+                ("Microsoft.MicrosoftOfficeHub",                  "Office Hub"),
+                ("Microsoft.MicrosoftPowerBIForWindows",          "Power BI"),
+                ("Microsoft.MicrosoftSolitaireCollection",        "Solitaire Collection"),
+                ("Microsoft.MicrosoftStickyNotes",                "Sticky Notes"),
+                ("Microsoft.MixedReality.Portal",                 "Mixed Reality Portal"),
+                ("Microsoft.NetworkSpeedTest",                    "Network Speed Test"),
+                ("Microsoft.News",                                "Microsoft News"),
+                ("Microsoft.Office.OneNote",                      "OneNote (UWP)"),
+                ("Microsoft.Office.Sway",                         "Sway"),
+                ("Microsoft.OneConnect",                          "One Connect"),
+                ("Microsoft.Print3D",                             "Print 3D"),
+                ("Microsoft.PowerAutomateDesktop",                "Power Automate"),
+                ("Microsoft.SkypeApp",                            "Skype (UWP)"),
+                ("Microsoft.Todos",                               "Microsoft To Do"),
+                ("Microsoft.Windows.DevHome",                     "Dev Home"),
+                ("Microsoft.WindowsAlarms",                       "Alarms & Clock"),
+                ("Microsoft.WindowsFeedbackHub",                  "Feedback Hub"),
+                ("Microsoft.WindowsMaps",                         "Windows Maps"),
+                ("Microsoft.WindowsSoundRecorder",                "Sound Recorder"),
+                ("Microsoft.XboxApp",                             "Xbox Console Companion"),
+                ("Microsoft.ZuneVideo",                           "Movies & TV"),
+                ("MicrosoftCorporationII.MicrosoftFamily",        "Family Safety"),
+                ("MicrosoftCorporationII.QuickAssist",            "Quick Assist"),
+                ("MicrosoftTeams",                                "Microsoft Teams (Old)"),
+                ("MSTeams",                                       "Microsoft Teams (New)"),
+                ("ACGMediaPlayer",                                "ACG Media Player"),
+                ("ActiproSoftwareLLC",                            "Actipro Software"),
+                ("AdobeSystemsIncorporated.AdobePhotoshopExpress","Adobe Photoshop Express"),
+                ("Amazon.com.Amazon",                             "Amazon"),
+                ("AmazonVideo.PrimeVideo",                        "Prime Video"),
+                ("Asphalt8Airborne",                              "Asphalt 8"),
+                ("AutodeskSketchBook",                            "Autodesk SketchBook"),
+                ("CaesarsSlotsFreeCasino",                        "Caesars Slots"),
+                ("COOKINGFEVER",                                  "Cooking Fever"),
+                ("CyberLinkMediaSuiteEssentials",                 "CyberLink Media Suite"),
+                ("DisneyMagicKingdoms",                           "Disney Magic Kingdoms"),
+                ("Disney",                                        "Disney"),
+                ("DrawboardPDF",                                  "Drawboard PDF"),
+                ("Duolingo-LearnLanguagesforFree",                "Duolingo"),
+                ("EclipseManager",                                "Eclipse Manager"),
+                ("Facebook",                                      "Facebook"),
+                ("FarmVille2CountryEscape",                       "FarmVille 2"),
+                ("fitbit",                                        "Fitbit"),
+                ("Flipboard",                                     "Flipboard"),
+                ("HiddenCity",                                    "Hidden City"),
+                ("HULULLC.HULUPLUS",                              "Hulu"),
+                ("iHeartRadio",                                   "iHeartRadio"),
+                ("Instagram",                                     "Instagram"),
+                ("king.com.BubbleWitch3Saga",                     "Bubble Witch 3"),
+                ("king.com.CandyCrushSaga",                       "Candy Crush Saga"),
+                ("king.com.CandyCrushSodaSaga",                   "Candy Crush Soda"),
+                ("LinkedInforWindows",                            "LinkedIn"),
+                ("MarchofEmpires",                                "March of Empires"),
+                ("Netflix",                                       "Netflix"),
+                ("NYTCrossword",                                  "NYT Crossword"),
+                ("OneCalendar",                                   "One Calendar"),
+                ("PandoraMediaInc",                               "Pandora"),
+                ("PhototasticCollage",                            "Phototastic Collage"),
+                ("PicsArt-PhotoStudio",                           "PicsArt"),
+                ("Plex",                                          "Plex"),
+                ("PolarrPhotoEditorAcademicEdition",              "Polarr Photo Editor"),
+                ("Royal Revolt",                                  "Royal Revolt"),
+                ("Shazam",                                        "Shazam"),
+                ("Sidia.LiveWallpaper",                           "Live Wallpaper"),
+                ("SlingTV",                                       "Sling TV"),
+                ("Spotify",                                       "Spotify"),
+                ("TikTok",                                        "TikTok"),
+                ("TuneInRadio",                                   "TuneIn Radio"),
+                ("Twitter",                                       "Twitter / X"),
+                ("Viber",                                         "Viber"),
+                ("WinZipUniversal",                               "WinZip"),
+                ("Wunderlist",                                    "Wunderlist"),
+                ("XING",                                          "XING"),
+                # ===== OPTIONAL =====
+                ("Microsoft.BingSearch",                          "Bing Search"),
+                ("Microsoft.GamingApp",                           "Xbox Gaming App"),
+                ("Microsoft.M365Companions",                      "Microsoft 365 Companions"),
+                ("Microsoft.MSPaint",                             "Paint 3D"),
+                ("Microsoft.OutlookForWindows",                   "Outlook for Windows"),
+                ("Microsoft.Paint",                               "Paint (Classic)"),
+                ("Microsoft.People",                              "People"),
+                ("Microsoft.RemoteDesktop",                       "Remote Desktop"),
+                ("Microsoft.ScreenSketch",                        "Snipping Tool"),
+                ("Microsoft.StartExperiencesApp",                 "Widgets Experience"),
+                ("Microsoft.Whiteboard",                          "Whiteboard"),
+                ("Microsoft.Windows.Photos",                      "Photos"),
+                ("Microsoft.WindowsCalculator",                   "Calculator"),
+                ("Microsoft.WindowsCamera",                       "Camera"),
+                ("Microsoft.windowscommunicationsapps",           "Mail & Calendar"),
+                ("Microsoft.WindowsNotepad",                      "Notepad"),
+                ("Microsoft.WindowsTerminal",                     "Windows Terminal"),
+                ("Microsoft.XboxGameOverlay",                     "Xbox Game Overlay"),
+                ("Microsoft.XboxGamingOverlay",                   "Xbox Gaming Overlay"),
+                ("Microsoft.YourPhone",                           "Phone Link"),
+                ("Microsoft.ZuneMusic",                           "Media Player"),
+                ("MicrosoftWindows.CrossDevice",                  "Cross Device Experience"),
+                # ===== UNSAFE =====
+                ("Microsoft.Edge",                                "Microsoft Edge"),
+                ("XPFFTQ037JWMHS",                               "Microsoft Edge (Store)"),
+                ("Microsoft.GetHelp",                             "Get Help"),
+                ("Microsoft.WindowsStore",                        "Microsoft Store"),
+                ("Microsoft.Xbox.TCUI",                           "Xbox TCUI Framework"),
+                ("Microsoft.XboxIdentityProvider",                "Xbox Identity Provider"),
+                ("Microsoft.XboxSpeechToTextOverlay",             "Xbox Speech To Text"),
+                # ===== OEM: HP =====
+                ("AD2F1837.HPAIExperienceCenter",                 "HP AI Experience Center"),
+                ("AD2F1837.HPConnectedMusic",                     "HP Connected Music"),
+                ("AD2F1837.HPConnectedPhotopoweredbySnapfish",    "HP Connected Photo"),
+                ("AD2F1837.HPDesktopSupportUtilities",            "HP Desktop Support Utilities"),
+                ("AD2F1837.HPEasyClean",                          "HP Easy Clean"),
+                ("AD2F1837.HPFileViewer",                         "HP File Viewer"),
+                ("AD2F1837.HPJumpStarts",                         "HP JumpStarts"),
+                ("AD2F1837.HPPCHardwareDiagnosticsWindows",       "HP PC Hardware Diagnostics"),
+                ("AD2F1837.HPPowerManager",                       "HP Power Manager"),
+                ("AD2F1837.HPPrinterControl",                     "HP Printer Control"),
+                ("AD2F1837.HPPrivacySettings",                    "HP Privacy Settings"),
+                ("AD2F1837.HPQuickDrop",                          "HP QuickDrop"),
+                ("AD2F1837.HPQuickTouch",                         "HP QuickTouch"),
+                ("AD2F1837.HPRegistration",                       "HP Registration"),
+                ("AD2F1837.HPSupportAssistant",                   "HP Support Assistant"),
+                ("AD2F1837.HPSureShieldAI",                       "HP Sure Shield AI"),
+                ("AD2F1837.HPSystemInformation",                  "HP System Information"),
+                ("AD2F1837.HPWelcome",                            "HP Welcome"),
+                ("AD2F1837.HPWorkWell",                           "HP WorkWell"),
+                ("AD2F1837.myHP",                                 "myHP"),
+                # ===== OEM: Lenovo =====
+                ("E046963F.LenovoCompanion",                      "Lenovo Vantage"),
+                ("LenovoCompanyLimited.LenovoVantageService",     "Lenovo Vantage Service"),
+                # ===== OEM: Dell =====
+                ("DellInc.DellSupportAssistforPCs",               "Dell SupportAssist"),
+                ("DellInc.DellDigitalDelivery",                   "Dell Digital Delivery"),
+                ("DellInc.DellMobileConnect",                     "Dell Mobile Connect"),
+            ]
+
+            # OneDrive requires winget — handle separately
+            self.queue.put("PROGRESS:Debloat Windows Extreme:Attempting OneDrive removal via winget...")
+            try:
+                subprocess.run(
+                    ['winget', 'uninstall', '--accept-source-agreements',
+                     '--disable-interactivity', '--id', 'Microsoft.OneDrive'],
+                    capture_output=True, text=True, timeout=120,
+                    startupinfo=_no_console_startupinfo()
+                )
+            except Exception:
+                pass
+
+            total = len(apps)
+            removed = 0
+            skipped = 0
+
+            for app_id, friendly in apps:
+                self.queue.put(f"PROGRESS:Debloat Windows Extreme:Removing {friendly}...")
+                ps = (
+                    f'$id = "*{app_id}*"; '
+                    f'Get-AppxPackage -Name $id -AllUsers -ErrorAction SilentlyContinue | '
+                    f'Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue; '
+                    f'Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | '
+                    f'Where-Object {{ $_.PackageName -like $id }} | '
+                    f'ForEach-Object {{ Remove-AppxProvisionedPackage -Online -AllUsers -PackageName $_.PackageName -ErrorAction SilentlyContinue }}'
+                )
+                try:
+                    result = subprocess.run(
+                        ['powershell', '-NoProfile', '-NonInteractive',
+                         '-ExecutionPolicy', 'RemoteSigned', '-Command', ps],
+                        capture_output=True, text=True, timeout=60,
+                        startupinfo=_no_console_startupinfo()
+                    )
+                    if result.returncode == 0:
+                        removed += 1
+                    else:
+                        skipped += 1
+                        self.queue.put(f"PROGRESS:Debloat Windows Extreme:  Skipped {friendly} (not installed or protected)")
+                except subprocess.TimeoutExpired:
+                    skipped += 1
+                    self.queue.put(f"PROGRESS:Debloat Windows Extreme:  Timeout removing {friendly}")
+                except Exception as ex:
+                    skipped += 1
+                    self.queue.put(f"PROGRESS:Debloat Windows Extreme:  Error removing {friendly}: {ex}")
+
+            self.queue.put(
+                f"PROGRESS:Debloat Windows Extreme:Done. {removed}/{total} apps processed, {skipped} not found/skipped."
+            )
+
+        except Exception as e:
+            self.queue.put(f"PROGRESS:Debloat Windows Extreme:Error: {str(e)}")
 
     def update_installed_apps(self):
 
@@ -11449,7 +12029,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             self.queue.put("PROGRESS:Update Apps:Checking for Windows Package Manager (winget)...")
             try:
                 subprocess.run(['winget', '--version'], capture_output=True, check=True, timeout=10,
-                               creationflags=CREATE_NO_WINDOW)
+                               startupinfo=_no_console_startupinfo())
                 self.queue.put("PROGRESS:Update Apps:Windows Package Manager found")
             except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                 self.queue.put("PROGRESS:Update Apps:Error: Windows Package Manager (winget) not found.")
@@ -11465,7 +12045,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
                 text=True,
                 check=False,
                 timeout=60,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
 
             updates = []
@@ -11500,7 +12080,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                creationflags=CREATE_NO_WINDOW  # Hide console window
+                startupinfo=_no_console_startupinfo()  # Hide console window
             )
 
             # Read the output in real-time
@@ -11544,7 +12124,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             self.queue.put("PROGRESS:Windows Updates:User initiated system reboot for updates...")
             try:
                 # Reboot the system
-                subprocess.run(['shutdown', '/r', '/t', '30'], check=True, timeout=10, creationflags=CREATE_NO_WINDOW)
+                subprocess.run(['shutdown', '/r', '/t', '30'], check=True, timeout=10, startupinfo=_no_console_startupinfo())
                 self.queue.put("PROGRESS:Windows Updates:System will reboot in 30 seconds...")
                 self.queue.put("PROGRESS:Windows Updates:Please save all work and close applications.")
 
@@ -11574,7 +12154,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             self.queue.put("PROGRESS:CHKDSK:User initiated system reboot...")
             try:
                 # Reboot the system with confirmation
-                subprocess.run(['shutdown', '/r', '/t', '30'], check=True, timeout=10, creationflags=CREATE_NO_WINDOW)
+                subprocess.run(['shutdown', '/r', '/t', '30'], check=True, timeout=10, startupinfo=_no_console_startupinfo())
                 self.queue.put("PROGRESS:CHKDSK:System will reboot in 30 seconds...")
                 self.queue.put("PROGRESS:CHKDSK:Please save all work and close applications.")
 
@@ -11606,18 +12186,28 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
         installer_win = tk.Toplevel(self.root)
         installer_win.title("WinMend - App Installer")
-        installer_win.geometry("1200x860")
         installer_win.configure(bg=self.theme['bg'])
         installer_win.transient(self.root)
         installer_win.grab_set()
 
-        # Center the window
-        installer_win.update_idletasks()
-        width = installer_win.winfo_width()
-        height = installer_win.winfo_height()
-        x = (installer_win.winfo_screenwidth() // 2) - (width // 2)
-        y = (installer_win.winfo_screenheight() // 2) - (height // 2)
-        installer_win.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+        # Use screen-aware sizing so action buttons are always visible.
+        screen_w = installer_win.winfo_screenwidth()
+        screen_h = installer_win.winfo_screenheight()
+        margin_w = 70
+        margin_h = 90
+        width = min(1200, max(760, screen_w - margin_w))
+        height = min(860, max(560, screen_h - margin_h))
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
+        installer_win.geometry(f"{width}x{height}+{x}+{y}")
+        installer_win.minsize(760, 560)
+
+        compact_layout = height < 760
+        top_bar_pady = 10 if compact_layout else 18
+        content_bottom_pady = 10 if compact_layout else 24
+        action_bar_height = 78 if compact_layout else 100
+        action_bar_pady = 12 if compact_layout else 24
+        action_button_pady = 10 if compact_layout else 14
 
         # Main Header
         header_frame = tk.Frame(installer_win, bg=self.theme['header_bg'], height=80)
@@ -11638,7 +12228,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
         # Search and Selection Summary Frame
         top_bar = tk.Frame(installer_win, bg=self.theme['surface'], height=60)
-        top_bar.pack(fill=tk.X, padx=28, pady=18)
+        top_bar.pack(fill=tk.X, padx=28, pady=top_bar_pady)
 
         search_label = tk.Label(top_bar, text="Search:", font=('Segoe UI', 11), bg=self.theme['surface'],
                                 fg=self.theme['label_fg'])
@@ -11669,7 +12259,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
 
         # Content Area with Sidebar and App Grid
         content_frame = tk.Frame(installer_win, bg=self.theme['bg'])
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=(0, 24))
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=28, pady=(0, content_bottom_pady))
 
         # Sidebar for Categories
         sidebar = tk.Frame(content_frame, bg=self.theme['surface'], width=230)
@@ -11903,8 +12493,8 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             category_buttons[cat] = btn
 
         # Bottom Action Bar
-        action_bar = tk.Frame(installer_win, bg=self.theme['bg'], height=100)
-        action_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=28, pady=24)
+        action_bar = tk.Frame(installer_win, bg=self.theme['bg'], height=action_bar_height)
+        action_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=28, pady=action_bar_pady)
 
         def start_installation():
             selected_apps = [name for name, var in app_vars.items() if var.get()]
@@ -11927,7 +12517,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             state=tk.DISABLED,
             bd=0,
             padx=36,
-            pady=14,
+            pady=action_button_pady,
             cursor="hand2",
             relief=tk.FLAT
         )
@@ -11942,7 +12532,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             fg=self.theme['button_secondary_fg'],
             bd=0,
             padx=36,
-            pady=14,
+            pady=action_button_pady,
             cursor="hand2",
             relief=tk.FLAT
         )
@@ -11957,32 +12547,40 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
     def run_minidump_analyzer(self):
         """Downloads and extracts NirSoft BlueScreenView, then runs it"""
         task_label = "minidump_analyzer"
-        
+
+        confirmed = messagebox.askyesno(
+            "Download Confirmation",
+            "MiniDump Analyzer requires downloading BlueScreenView from NirSoft.\n\n"
+            "Source: https://www.nirsoft.net/utils/bluescreenview-x64.zip\n"
+            "Publisher: NirSoft (nirsoft.net)\n\n"
+            "The file will be saved to your TEMP folder and launched.\n\n"
+            "Do you want to proceed?"
+        )
+        if not confirmed:
+            self.queue.put(f"PROGRESS:{task_label}:Download cancelled by user.")
+            return
+
         url = "https://www.nirsoft.net/utils/bluescreenview-x64.zip"
         temp_dir = os.environ.get('TEMP', 'C:\\Windows\\Temp')
         zip_path = os.path.join(temp_dir, "bluescreenview-x64.zip")
         extract_dir = os.path.join(temp_dir, "BlueScreenView")
         exe_path = os.path.join(extract_dir, "BlueScreenView.exe")
-        
+
         self.queue.put(f"PROGRESS:{task_label}:Downloading BlueScreenView from NirSoft...")
         try:
             import urllib.request
             import zipfile
-            
+
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
             with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out_file:
                 out_file.write(response.read())
-                
+
             self.queue.put(f"PROGRESS:{task_label}:Extracting BlueScreenView...")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(extract_dir)
-                
+
             self.queue.put(f"PROGRESS:{task_label}:Launching BlueScreenView...")
-            
-            # Use DETACHED_PROCESS to launch the GUI without tying it to the cleaner's console
-            DETACHED_PROCESS = 0x00000008
-            subprocess.Popen([exe_path], creationflags=DETACHED_PROCESS)
-            
+            subprocess.Popen([exe_path], creationflags=subprocess.DETACHED_PROCESS)
             self.queue.put(f"PROGRESS:{task_label}:BlueScreenView launched successfully.")
         except Exception as e:
             self.queue.put(f"PROGRESS:{task_label}:Error executing MiniDump Analyzer: {str(e)}")
@@ -12008,11 +12606,10 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             (["arp", "-d", "*"], "Clearing ARP cache...")
         ]
 
-        CREATE_NO_WINDOW = 0x08000000
         for cmd, desc in commands:
             self.queue.put(f"PROGRESS:{task_label}:{desc}")
             try:
-                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=_no_console_startupinfo())
             except Exception as e:
                 self.queue.put(f"PROGRESS:{task_label}:Error running command {cmd}: {e}")
                 
@@ -12021,20 +12618,32 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
     def run_sysinternals_autoruns(self):
         """Downloads and launches Sysinternals Autoruns"""
         task_label = "sysinternals_autoruns"
+
+        confirmed = messagebox.askyesno(
+            "Download Confirmation",
+            "Sysinternals Autoruns requires downloading from Microsoft.\n\n"
+            "Source: https://live.sysinternals.com/Autoruns64.exe\n"
+            "Publisher: Microsoft Sysinternals\n\n"
+            "The file will be saved to your TEMP folder and launched.\n\n"
+            "Do you want to proceed?"
+        )
+        if not confirmed:
+            self.queue.put(f"PROGRESS:{task_label}:Download cancelled by user.")
+            return
+
         url = "https://live.sysinternals.com/Autoruns64.exe"
         temp_dir = os.environ.get('TEMP', 'C:\\Windows\\Temp')
         exe_path = os.path.join(temp_dir, "Autoruns64.exe")
-        
+
         self.queue.put(f"PROGRESS:{task_label}:Downloading Sysinternals Autoruns...")
         try:
             import urllib.request
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
             with urllib.request.urlopen(req) as response, open(exe_path, 'wb') as out_file:
                 out_file.write(response.read())
-                
+
             self.queue.put(f"PROGRESS:{task_label}:Launching Autoruns...")
-            DETACHED_PROCESS = 0x00000008
-            subprocess.Popen([exe_path, "/accepteula"], creationflags=DETACHED_PROCESS)
+            subprocess.Popen([exe_path, "/accepteula"], creationflags=subprocess.DETACHED_PROCESS)
             self.queue.put(f"PROGRESS:{task_label}:Autoruns launched successfully.")
         except Exception as e:
             self.queue.put(f"PROGRESS:{task_label}:Error executing Autoruns: {str(e)}")
@@ -12042,20 +12651,32 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
     def run_sysinternals_procexp(self):
         """Downloads and launches Sysinternals Process Explorer"""
         task_label = "sysinternals_procexp"
+
+        confirmed = messagebox.askyesno(
+            "Download Confirmation",
+            "Sysinternals Process Explorer requires downloading from Microsoft.\n\n"
+            "Source: https://live.sysinternals.com/procexp64.exe\n"
+            "Publisher: Microsoft Sysinternals\n\n"
+            "The file will be saved to your TEMP folder and launched.\n\n"
+            "Do you want to proceed?"
+        )
+        if not confirmed:
+            self.queue.put(f"PROGRESS:{task_label}:Download cancelled by user.")
+            return
+
         url = "https://live.sysinternals.com/procexp64.exe"
         temp_dir = os.environ.get('TEMP', 'C:\\Windows\\Temp')
         exe_path = os.path.join(temp_dir, "procexp64.exe")
-        
+
         self.queue.put(f"PROGRESS:{task_label}:Downloading Sysinternals Process Explorer...")
         try:
             import urllib.request
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
             with urllib.request.urlopen(req) as response, open(exe_path, 'wb') as out_file:
                 out_file.write(response.read())
-                
+
             self.queue.put(f"PROGRESS:{task_label}:Launching Process Explorer...")
-            DETACHED_PROCESS = 0x00000008
-            subprocess.Popen([exe_path, "/accepteula"], creationflags=DETACHED_PROCESS)
+            subprocess.Popen([exe_path, "/accepteula"], creationflags=subprocess.DETACHED_PROCESS)
             self.queue.put(f"PROGRESS:{task_label}:Process Explorer launched successfully.")
         except Exception as e:
             self.queue.put(f"PROGRESS:{task_label}:Error executing Process Explorer: {str(e)}")
@@ -12071,7 +12692,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             # Ensure System Restore is enabled on C:
             Enable-ComputerRestore -Drive "C:\\" -ErrorAction SilentlyContinue
             
-            # Bypass 24-hour frequency limit in Windows 10/11
+            # Override 24-hour frequency limit in Windows 10/11
             $regKey = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore"
             New-ItemProperty -Path $regKey -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
             
@@ -12101,7 +12722,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
         '''
         try:
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Guardrail', timeout=120)
             if timed_out:
                 self.queue.put("PROGRESS:Guardrail:Restore point creation timed out.")
@@ -12168,8 +12789,8 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
                 }
             '''
             result = subprocess.run(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
-                capture_output=True, text=True, check=False, timeout=90, creationflags=CREATE_NO_WINDOW
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
+                capture_output=True, text=True, check=False, timeout=90, startupinfo=_no_console_startupinfo()
             )
             if result.stdout:
                 lines.append(result.stdout.strip())
@@ -12205,7 +12826,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             for cmd, filename in commands:
                 try:
                     result = subprocess.run(
-                        cmd, capture_output=True, text=True, check=False, timeout=180, creationflags=CREATE_NO_WINDOW
+                        cmd, capture_output=True, text=True, check=False, timeout=180, startupinfo=_no_console_startupinfo()
                     )
                     with open(os.path.join(out_dir, filename), 'w', encoding='utf-8') as f:
                         f.write(result.stdout or "")
@@ -12253,7 +12874,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
               Select-Object -First 40 |
               ForEach-Object { Write-Host ("[{0}] {1} {2}" -f $_.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss"), $_.ProviderName, ($_.Message -replace "\r|\n"," ")) }
             '''
-            self._run_live_command(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_diag],
+            self._run_live_command(['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_diag],
                                    'Update Forensic', timeout=180)
 
             self.queue.put("PROGRESS:Update Forensic:Applying targeted update component repair...")
@@ -12288,7 +12909,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
               exit 1
             }
             '''
-            self._run_live_command(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+            self._run_live_command(['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                                    'Smart Malware', timeout=1200)
             self.run_msrt_scan()
             self.queue.put("PROGRESS:Smart Malware:Remediation workflow complete.")
@@ -12321,7 +12942,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             for cmd, label in checks:
                 try:
                     result = subprocess.run(
-                        cmd, capture_output=True, text=True, check=False, timeout=90, creationflags=CREATE_NO_WINDOW
+                        cmd, capture_output=True, text=True, check=False, timeout=90, startupinfo=_no_console_startupinfo()
                     )
                     cmd_outputs.append(f"\n=== {label} ===\n")
                     cmd_outputs.append(result.stdout or "")
@@ -12388,7 +13009,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
         '''
         try:
             rc, timed_out = self._run_live_command(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-Command', ps_script],
                 'Service Repair', timeout=300)
             if timed_out:
                 self.queue.put("PROGRESS:Service Repair:Operation timed out.")
@@ -12538,7 +13159,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             r = subprocess.run(
                 ["cscript", "//nologo", slmgr, "/ipk", key],
                 capture_output=True, text=True, timeout=60,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
             output = (r.stdout + r.stderr).strip()
             if output:
@@ -12557,7 +13178,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             r = subprocess.run(
                 ["cscript", "//nologo", slmgr, "/ato"],
                 capture_output=True, text=True, timeout=60,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
             output = (r.stdout + r.stderr).strip()
             if output:
@@ -12576,7 +13197,7 @@ Get-AutoPilotInfo -OutputFile "C:\\PowerShell\\AutoPilot.csv"
             r = subprocess.run(
                 ["cscript", "//nologo", slmgr, "/xpr"],
                 capture_output=True, text=True, timeout=30,
-                creationflags=CREATE_NO_WINDOW
+                startupinfo=_no_console_startupinfo()
             )
             output = (r.stdout + r.stderr).strip()
             if output:
@@ -12626,6 +13247,8 @@ def parse_args():
                         help="Enable/disable disabling startup apps except OneDrive (1/0)")
     parser.add_argument("--debloat-windows", type=int, choices=[0, 1], default=0,
                         help="Enable/disable running Win11Debloat (1/0)")
+    parser.add_argument("--open-msconfig", type=int, choices=[0, 1], default=0,
+                        help="Enable/disable opening MSCONFIG (1/0)")
     return parser.parse_args()
 
 
@@ -12758,6 +13381,7 @@ def main():
             app.stop_background_apps_var.set(args.stop_background_apps)
             app.disable_startup_apps_var.set(args.disable_startup_apps)
             app.debloat_windows.set(args.debloat_windows)
+            app.open_msconfig.set(args.open_msconfig)
 
         startup_log("Main application created")
 
