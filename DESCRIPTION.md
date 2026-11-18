@@ -1,12 +1,12 @@
 # WinMend 3.7
 
-**97 Windows maintenance tools in one app, with a repair assistant that checks its own work, and an undo button that actually works.**
+**99 Windows maintenance tools in one app, with a repair assistant that checks its own work, and an undo button that actually works.**
 
 ## What WinMend Is
 
 WinMend is a desktop application for IT professionals, power users, and everyday users who want a single, reliable tool to maintain, repair, and diagnose their Windows machines.
 
-It brings together 97 maintenance tools across 12 categories (one-click junk removal, system file repair, BSOD triage, network stack remediation, a full internet speed test, a startup manager, 27 reversible Windows registry switches, and a 392-application installer) in one native Windows app, without ever opening a command prompt.
+It brings together 99 maintenance tools across 12 categories (one-click junk removal, system file repair, BSOD triage, network stack remediation, a full internet speed test, a startup manager, 27 reversible Windows registry switches, and a 392-application installer) in one native Windows app, without ever opening a command prompt.
 
 Plenty of tools do some of that. Three things separate WinMend from a folder of batch scripts.
 
@@ -158,7 +158,7 @@ Every on/off choice in the app is an animated slider that is red when off and gr
 
 The right-hand panel is split in two. The **Checklist** lists everything you have selected before you start, then what is running (with elapsed time, and no time limit), what is queued, and every finished task with how long it took. Nothing is trimmed, so a twenty-task run can be reviewed in full while it is still going. The **Activity log** beneath it keeps the whole session's output, timestamped, and opens every session with "Ready. Nothing has been changed."
 
-Simple mode presents 26 plain-English actions, such as "Free up disk space", "Fix my internet", and "Check my drive's health". Advanced mode exposes all 97 tools under their real names with full descriptions. A search bar matches a plain-English problem against every tool and ranks the best candidates with the reason for each match, so typing "blue screen" or "100% disk" goes straight to the right place.
+Simple mode presents 26 plain-English actions, such as "Free up disk space", "Fix my internet", and "Check my drive's health". Advanced mode exposes all 99 tools under their real names with full descriptions. A search bar matches a plain-English problem against every tool and ranks the best candidates with the reason for each match, so typing "blue screen" or "100% disk" goes straight to the right place.
 
 WinMend starts in whichever theme Windows is set to. A **Dark mode** switch at the foot of the sidebar changes it for the session: the new theme sweeps across the window from left to right, and nothing is rebuilt, so your selections, scan results, and any running task carry on untouched. Typography is Segoe UI Variable, the Windows 11 system font.
 

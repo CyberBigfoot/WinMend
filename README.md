@@ -83,6 +83,25 @@ All 99 options go through one reporting contract. A task that finishes without r
 - **Clean Temp Files** keeps Prefetch, which Windows reads to start apps faster, and leaves anything changed in the last 24 hours, which installers and running apps (including WinMend's own unpacked files) are still using.
 - **Clear Browser Cache** covers every profile of Edge, Chrome, Brave, Vivaldi, Opera, Opera GX, and Firefox, and touches only cache folders. Firefox's cache used to be looked for in the roaming profile, where it does not exist, so it was never actually cleared.
 
+### New: SSD Saver
+
+**SSD Saver** (Repair & Recovery) stops the AMD External Events Utility service and sets it to Disabled, on PCs with an AMD processor or graphics card. Affected systems see ongoing background writes from that service, which wear an SSD's finite write endurance. It changes nothing on other PCs or where the service is not installed, and **Reset Windows Defaults** puts back the start type it had.
+
+### Options that now do what they say
+
+Every option was run through the real window with each command recorded, and these were fixed:
+
+- **Create AutoPilot CSV** used to write a script into `C:\PowerShell` (a folder every account on the PC can change) and run it as administrator. It now reads the hardware hash in memory and saves the CSV to your Desktop.
+- **Windows Update Forensic Fixer** reset the update components over any error in the last 14 days, even one a later install of the same update had already fixed. It now leaves Windows Update alone unless an error is still unresolved.
+- **Windows Updates** reported a partly successful install as a failure. It now names each update that did and did not install, and offers the restart the installed ones need.
+- **Rebuild Icon & Thumbnail Cache** deleted nothing (Windows restarted Explorer before the files were reached) yet said it had succeeded, then opened a stray Explorer window. It now closes Explorer cleanly, reports any file still in use, and starts Explorer only if Windows has not.
+- **Reliability Monitor**, **Memory Diagnostic**, Office's **Quick and Online Repair**, **WinDbg** and the edition-change dialog were started with their window hidden. They now open normally.
+- **Windows Optional Features** enables DirectPlay and the NFS client themselves rather than their empty parent features, and confirms the result with Windows.
+- **Boot Time Analyzer** explains when the Diagnostic Policy Service is off (RAM Optimizations turns it off), instead of showing old boots as if they were recent.
+- PowerShell failures now show their message ("The requested operation requires elevation.") instead of an error id.
+- Cancelling **Activate Windows**, or running **Battery Health Report** or **Wi-Fi Channel Analyzer** on a PC without a battery or Wi-Fi, now reports Skipped rather than Completed.
+- **PC Report** shows the real system UUID; it used to show the network adapter's MAC address under that name.
+
 ### Under the hood
 
 `WinMend.py` is now a small launcher; the application lives in the `winmend/` package, organised by responsibility. See [Source Layout](#source-layout).

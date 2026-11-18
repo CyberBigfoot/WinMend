@@ -1,6 +1,6 @@
 WinMend 3.7
 
-97 Windows maintenance tools in one app, with a repair assistant that
+99 Windows maintenance tools in one app, with a repair assistant that
 checks its own work, and an undo button that actually works.
 
 
@@ -10,7 +10,7 @@ WinMend is a desktop application for IT professionals, power users, and
 everyday users who want a single, reliable tool to maintain, repair, and
 diagnose their Windows machines.
 
-It brings together 97 maintenance tools across 12 categories (one-click
+It brings together 99 maintenance tools across 12 categories (one-click
 junk removal, system file repair, BSOD triage, network stack
 remediation, a full internet speed test, a startup manager, 27
 reversible Windows registry switches, and a 392-application installer)
@@ -447,7 +447,7 @@ whole session's output, timestamped, and opens every session with
 
 Simple mode presents 26 plain-English actions, such as "Free up disk
 space", "Fix my internet", and "Check my drive's health". Advanced mode
-exposes all 97 tools under their real names with full descriptions. A
+exposes all 99 tools under their real names with full descriptions. A
 search bar matches a plain-English problem against every tool and ranks
 the best candidates with the reason for each match, so typing "blue
 screen" or "100% disk" goes straight to the right place.
@@ -542,7 +542,7 @@ SHORT VERSION
 ---------------------------------------------------------------------
 
 WinMend is a Windows maintenance, repair, and diagnostic toolkit for IT
-professionals, power users, and anyone who just wants their PC fixed. 97
+professionals, power users, and anyone who just wants their PC fixed. 99
 tools cover cleanup, system repair, performance, startup, network,
 security, hardware diagnostics, drivers, and a 392-app installer.
 
