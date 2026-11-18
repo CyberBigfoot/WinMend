@@ -1,0 +1,1 @@
+"""winmend.diagnostics.hardware package."""

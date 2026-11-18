@@ -1,0 +1,1 @@
+"""winmend.features.office package."""

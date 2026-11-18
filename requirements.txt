@@ -1,7 +1,11 @@
-beautifulsoup4==4.14.2
-customtkinter==5.2.2
-pillow==12.1.1
 psutil==7.1.0
 pywin32==311
+PySide6==6.11.1
 requests==2.32.5
-WMI==1.5.1
+
+# beautifulsoup4 and WMI are gone too: nothing imports bs4, and every WMI query
+# goes through PowerShell's Get-CimInstance (the wmic tool it replaced no longer
+# ships with Windows 11 25H2).
+# customtkinter and pillow are gone with the tkinter UI: customtkinter was the
+# old Storage Analyzer window, and pillow was only ever pulled in as its
+# dependency -- no project code imports PIL.

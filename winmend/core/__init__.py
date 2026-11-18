@@ -1,0 +1,1 @@
+"""winmend.core package."""

@@ -1,0 +1,2167 @@
+{
+  "description": "Hand-labeled synthetic evaluation v1: 24 differential cases and 10 verification cases, authored during this implementation and stored separately from development fixtures. Not externally adjudicated or representative of a Windows fleet.",
+  "cases": [
+    {
+      "id": "cafe_connected_names_fail",
+      "problem": "Wi-Fi connected but sites never load",
+      "expected_profiles": [
+        "network"
+      ],
+      "expected_causes": [
+        "dns_dead"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": false,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "layered_network": {
+          "available": true,
+          "tcp": [
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "dns": {
+            "available": true,
+            "results": [
+              {
+                "ok": false
+              },
+              {
+                "ok": false
+              },
+              {
+                "ok": false
+              },
+              {
+                "ok": false
+              }
+            ]
+          },
+          "https": {
+            "available": true,
+            "results": [
+              {
+                "ok": false
+              },
+              {
+                "ok": false
+              }
+            ]
+          }
+        },
+        "dns_resolution": {
+          "available": true,
+          "resolved": 0,
+          "attempted": 2,
+          "failed": 2,
+          "slowest_ms": 20,
+          "hijacked": false
+        }
+      },
+      "allowed_mutations": [
+        "flush_dns_cache"
+      ],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "work_private_names_only",
+      "problem": "Only intranet websites fail on VPN",
+      "expected_profiles": [
+        "network"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": true,
+          "split_dns": true,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "layered_network": {
+          "available": true,
+          "tcp": [
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "dns": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          },
+          "https": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          }
+        },
+        "dns_resolution": {
+          "available": true,
+          "resolved": 2,
+          "attempted": 2,
+          "failed": 0,
+          "slowest_ms": 20,
+          "hijacked": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "browser_specific",
+      "problem": "Chrome cannot load one website; Edge works",
+      "expected_profiles": [
+        "browser",
+        "network"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "layered_network": {
+          "available": true,
+          "tcp": [
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "dns": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          },
+          "https": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          }
+        },
+        "dns_resolution": {
+          "available": true,
+          "resolved": 2,
+          "attempted": 2,
+          "failed": 0,
+          "slowest_ms": 20,
+          "hijacked": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "custom_dns_working",
+      "problem": "Network works with our DNS",
+      "expected_profiles": [
+        "network"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "layered_network": {
+          "available": true,
+          "tcp": [
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "dns": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          },
+          "https": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          }
+        },
+        "dns_servers": {
+          "available": true,
+          "unrecognised": [
+            "203.0.113.8"
+          ],
+          "interfaces": []
+        },
+        "dns_resolution": {
+          "available": true,
+          "resolved": 2,
+          "attempted": 2,
+          "failed": 0,
+          "slowest_ms": 20,
+          "hijacked": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "normal_proxy",
+      "problem": "Internet connected at school",
+      "expected_profiles": [
+        "network"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "proxy_settings": {
+          "available": true,
+          "pac_or_proxy": true,
+          "enabled": true,
+          "server": "proxy.school:8080"
+        },
+        "layered_network": {
+          "available": true,
+          "tcp": [
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "dns": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          },
+          "https": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          }
+        },
+        "dns_resolution": {
+          "available": true,
+          "resolved": 2,
+          "attempted": 2,
+          "failed": 0,
+          "slowest_ms": 20,
+          "hijacked": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "proxy_or_tls",
+      "problem": "Internet works but websites fail",
+      "expected_profiles": [
+        "network"
+      ],
+      "expected_causes": [
+        "proxy_path"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "proxy_settings": {
+          "available": true,
+          "pac_or_proxy": true,
+          "enabled": true,
+          "server": "proxy.local:8080"
+        },
+        "layered_network": {
+          "available": true,
+          "tcp": [
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "dns": {
+            "available": true,
+            "results": [
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              },
+              {
+                "ok": true
+              }
+            ]
+          },
+          "https": {
+            "available": true,
+            "results": [
+              {
+                "ok": false
+              },
+              {
+                "ok": false
+              }
+            ]
+          }
+        },
+        "dns_resolution": {
+          "available": true,
+          "resolved": 2,
+          "attempted": 2,
+          "failed": 0,
+          "slowest_ms": 20,
+          "hijacked": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "cpu_sustained",
+      "problem": "Laptop is sluggish and unresponsive",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [
+        "cpu_hog"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 56,
+          "available_gb": 7.04
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": true,
+          "samples": [
+            {
+              "cpu_pct": 92,
+              "available_pct": 44,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 96,
+              "available_pct": 44,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 91,
+              "available_pct": 44,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 98,
+              "available_pct": 44,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            }
+          ],
+          "processes": [],
+          "paging": {
+            "available": false
+          },
+          "update_active": false
+        },
+        "cpu_load": {
+          "available": true,
+          "used_pct": 94.25,
+          "cores": 8,
+          "top": [],
+          "hog": null
+        },
+        "disk_latency": {
+          "available": true,
+          "avg_ms": 2.0,
+          "ops": 300,
+          "idle": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "cpu_normal_burst",
+      "problem": "PC was slow during launch but works now",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 55,
+          "available_gb": 7.2
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": true,
+          "samples": [
+            {
+              "cpu_pct": 100,
+              "available_pct": 45,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 35,
+              "available_pct": 45,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 12,
+              "available_pct": 45,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 9,
+              "available_pct": 45,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            }
+          ],
+          "processes": [],
+          "paging": {
+            "available": false
+          },
+          "update_active": false
+        },
+        "cpu_load": {
+          "available": true,
+          "used_pct": 39.0,
+          "cores": 8,
+          "top": [],
+          "hog": null
+        },
+        "disk_latency": {
+          "available": true,
+          "avg_ms": 2.0,
+          "ops": 300,
+          "idle": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "commit_exhaustion",
+      "problem": "Every application freezes",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [
+        "memory_pressure"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 99,
+          "available_gb": 0.16
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": true,
+          "samples": [
+            {
+              "cpu_pct": 30,
+              "available_pct": 2,
+              "commit_pct": 94,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 30,
+              "available_pct": 3,
+              "commit_pct": 96,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 30,
+              "available_pct": 2,
+              "commit_pct": 95,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 30,
+              "available_pct": 1,
+              "commit_pct": 98,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 2,
+                  "ops": 300
+                }
+              ]
+            }
+          ],
+          "processes": [],
+          "paging": {
+            "available": false
+          },
+          "update_active": false
+        },
+        "cpu_load": {
+          "available": true,
+          "used_pct": 30.0,
+          "cores": 8,
+          "top": [],
+          "hog": null
+        },
+        "disk_latency": {
+          "available": true,
+          "avg_ms": 2.0,
+          "ops": 300,
+          "idle": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "memory_cache",
+      "problem": "Slow PC and high RAM usage",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 70,
+          "available_gb": 4.8
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": true,
+          "samples": [
+            {
+              "cpu_pct": 25,
+              "available_pct": 30,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 3,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 25,
+              "available_pct": 30,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 3,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 25,
+              "available_pct": 30,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 3,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 25,
+              "available_pct": 30,
+              "commit_pct": 45,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 3,
+                  "ops": 300
+                }
+              ]
+            }
+          ],
+          "processes": [],
+          "paging": {
+            "available": false
+          },
+          "update_active": false
+        },
+        "cpu_load": {
+          "available": true,
+          "used_pct": 25.0,
+          "cores": 8,
+          "top": [],
+          "hog": null
+        },
+        "disk_latency": {
+          "available": true,
+          "avg_ms": 3.0,
+          "ops": 300,
+          "idle": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "slow_storage_device",
+      "problem": "Games freeze after 20 minutes",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [
+        "storage_bottleneck"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 55,
+          "available_gb": 7.2
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": true,
+          "samples": [
+            {
+              "cpu_pct": 20,
+              "available_pct": 45,
+              "commit_pct": 40,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 90,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 20,
+              "available_pct": 45,
+              "commit_pct": 40,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 110,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 20,
+              "available_pct": 45,
+              "commit_pct": 40,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 100,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 20,
+              "available_pct": 45,
+              "commit_pct": 40,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 85,
+                  "ops": 300
+                }
+              ]
+            }
+          ],
+          "processes": [],
+          "paging": {
+            "available": false
+          },
+          "update_active": false
+        },
+        "cpu_load": {
+          "available": true,
+          "used_pct": 20.0,
+          "cores": 8,
+          "top": [],
+          "hog": null
+        },
+        "disk_latency": {
+          "available": true,
+          "avg_ms": 96.25,
+          "ops": 300,
+          "idle": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "insufficient_sampling",
+      "problem": "Computer is slow sometimes",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": false,
+          "reason": "Provider not available"
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "severe_space",
+      "problem": "No disk space to save files",
+      "expected_profiles": [
+        "storage"
+      ],
+      "expected_causes": [
+        "disk_full"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 1.3,
+          "free_pct": 1.6
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        }
+      },
+      "allowed_mutations": [
+        "clean_temp",
+        "disk_cleanup",
+        "component_cleanup"
+      ],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "drive_reports_errors",
+      "problem": "PC freezes while saving files",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [
+        "drive_wear"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "disk_reliability": {
+          "available": true,
+          "counters_readable": true,
+          "disks": [
+            {
+              "name": "SSD",
+              "health": "Healthy",
+              "read_errors": 11,
+              "write_errors": 0
+            }
+          ]
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "missing_smart",
+      "problem": "Slow SSD; USB enclosure hides SMART",
+      "expected_profiles": [
+        "performance",
+        "storage"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "smart_health": {
+          "available": false,
+          "reason": "Unsupported storage bridge"
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "pnp_fault",
+      "problem": "USB device does not work",
+      "expected_profiles": [
+        "devices"
+      ],
+      "expected_causes": [
+        "problem_devices"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "problem_devices": {
+          "available": true,
+          "devices": [
+            {
+              "name": "Camera",
+              "class": "USB",
+              "status": "Error",
+              "problem_code": 10,
+              "instance_id": "USB\\CAM",
+              "meaning": "Cannot start",
+              "remedy": "Inspect device"
+            }
+          ]
+        }
+      },
+      "allowed_mutations": [
+        "reinstall_device"
+      ],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "history_only",
+      "problem": "PC became slow after a Windows update",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "installed_updates": {
+          "available": true,
+          "updates": [
+            {
+              "kb": "KB999999",
+              "days_ago": 1
+            }
+          ]
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {
+        "onset": "week",
+        "trigger": "update"
+      }
+    },
+    {
+      "id": "pending_not_failure",
+      "problem": "Windows Update waiting for restart",
+      "expected_profiles": [
+        "updates"
+      ],
+      "expected_causes": [
+        "needs_restart"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": true,
+          "reasons": [
+            "Servicing"
+          ]
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        }
+      },
+      "allowed_mutations": [
+        "restart_windows"
+      ],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "app_hang",
+      "problem": "Only Teams crashes; Windows keeps running",
+      "expected_profiles": [
+        "crashes"
+      ],
+      "expected_causes": [
+        "app_crash_module"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "app_crashes": {
+          "available": true,
+          "crashes": [
+            {
+              "app": "teams.exe",
+              "module": "teams.dll",
+              "count": 3,
+              "exception": "c0000005",
+              "vendor": "",
+              "exception_meaning": "Access violation"
+            }
+          ]
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "idle_corrected_whea",
+      "problem": "Full system check",
+      "expected_profiles": [
+        "audit"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "whea_errors": {
+          "available": true,
+          "count": 1,
+          "corrected": 1,
+          "uncorrected": 0,
+          "worst_area": "pcie"
+        },
+        "event_log_errors": {
+          "available": true,
+          "hardware_errors": 1,
+          "disk_errors": 0,
+          "unexpected_shutdowns": 0,
+          "service_crashes": 0
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": "audit",
+      "answers": {}
+    },
+    {
+      "id": "negated_slow",
+      "problem": "My PC is not slow, it crashes opening games",
+      "expected_profiles": [
+        "crashes"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "mixed_io_memory",
+      "problem": "Slow and freezes during heavy editing",
+      "expected_profiles": [
+        "performance"
+      ],
+      "expected_causes": [
+        "memory_pressure",
+        "storage_bottleneck"
+      ],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 98,
+          "available_gb": 0.32
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "performance_samples": {
+          "available": true,
+          "samples": [
+            {
+              "cpu_pct": 45,
+              "available_pct": 2,
+              "commit_pct": 93,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 95,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 45,
+              "available_pct": 4,
+              "commit_pct": 95,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 100,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 45,
+              "available_pct": 3,
+              "commit_pct": 94,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 85,
+                  "ops": 300
+                }
+              ]
+            },
+            {
+              "cpu_pct": 45,
+              "available_pct": 2,
+              "commit_pct": 96,
+              "disks": [
+                {
+                  "device": "nvme0",
+                  "latency_ms": 90,
+                  "ops": 300
+                }
+              ]
+            }
+          ],
+          "processes": [],
+          "paging": {
+            "available": false
+          },
+          "update_active": false
+        },
+        "cpu_load": {
+          "available": true,
+          "used_pct": 45.0,
+          "cores": 8,
+          "top": [],
+          "hog": null
+        },
+        "disk_latency": {
+          "available": true,
+          "avg_ms": 92.5,
+          "ops": 300,
+          "idle": false
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "kernel_power_unknown",
+      "problem": "Computer randomly shuts off",
+      "expected_profiles": [
+        "crashes"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        },
+        "event_log_errors": {
+          "available": true,
+          "hardware_errors": 0,
+          "disk_errors": 0,
+          "unexpected_shutdowns": 1,
+          "service_crashes": 0
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": false,
+      "profile": null,
+      "answers": {}
+    },
+    {
+      "id": "healthy_no_faults",
+      "problem": "Full system check",
+      "expected_profiles": [
+        "audit"
+      ],
+      "expected_causes": [],
+      "raw": {
+        "disk": {
+          "free_gb": 180,
+          "free_pct": 60
+        },
+        "memory": {
+          "used_pct": 38,
+          "available_gb": 10
+        },
+        "network": {
+          "adapters": 1,
+          "dns": true,
+          "reachable": true
+        },
+        "restart_pending": {
+          "available": true,
+          "pending": false,
+          "reasons": []
+        },
+        "system_context": {
+          "available": true,
+          "domain_joined": false,
+          "mdm_managed": false,
+          "vpn_present": false,
+          "split_dns": false,
+          "remote_session": false,
+          "boot_time": 100
+        }
+      },
+      "allowed_mutations": [],
+      "healthy": true,
+      "profile": "audit",
+      "answers": {}
+    }
+  ],
+  "verification_cases": [
+    {
+      "id": "exit_zero_fault_still_bad",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "expected": "not_resolved"
+    },
+    {
+      "id": "missing_after",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [],
+        "severity_score": 0
+      },
+      "expected": "inconclusive"
+    },
+    {
+      "id": "denied_after",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "permission_denied",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 0
+      },
+      "expected": "inconclusive"
+    },
+    {
+      "id": "unknown_after",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "info",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 0
+      },
+      "expected": "inconclusive"
+    },
+    {
+      "id": "partial_threshold",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "warn",
+            "value": "11",
+            "data": {
+              "free_pct": 11
+            }
+          }
+        ],
+        "severity_score": 1
+      },
+      "expected": "improved"
+    },
+    {
+      "id": "target_clear",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "good",
+            "value": "35",
+            "data": {
+              "free_pct": 35
+            }
+          }
+        ],
+        "severity_score": 0
+      },
+      "expected": "resolved"
+    },
+    {
+      "id": "symptom_unknown",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3,
+        "problem": "Disk full",
+        "profile": "storage"
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "good",
+            "value": "35",
+            "data": {
+              "free_pct": 35
+            }
+          }
+        ],
+        "severity_score": 0
+      },
+      "expected": "symptom_unverified"
+    },
+    {
+      "id": "symptom_confirmed",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3,
+        "problem": "Disk full"
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "good",
+            "value": "35",
+            "data": {
+              "free_pct": 35
+            }
+          }
+        ],
+        "severity_score": 0,
+        "symptom_resolved": true
+      },
+      "expected": "resolved"
+    },
+    {
+      "id": "worsened",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "warn",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3
+      },
+      "expected": "needs_attention"
+    },
+    {
+      "id": "command_failed",
+      "before": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "bad",
+            "value": "1",
+            "data": {
+              "free_pct": 1
+            }
+          }
+        ],
+        "severity_score": 3,
+        "repair_status": "failed"
+      },
+      "after": {
+        "findings": [
+          {
+            "key": "disk_free",
+            "status": "good",
+            "value": "35",
+            "data": {
+              "free_pct": 35
+            }
+          }
+        ],
+        "severity_score": 0
+      },
+      "expected": "repair_failed"
+    }
+  ]
+}
